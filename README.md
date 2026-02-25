@@ -1,16 +1,35 @@
-# React + Vite
+# Inhalo 360 (React Three Fiber)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+VR training prototype migrated from Unity to React Three Fiber + XR.
 
-Currently, two official plugins are available:
+## Tech Stack
+- React + Vite
+- three.js / @react-three/fiber
+- @react-three/drei
+- @react-three/xr
+- Zustand
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Getting Started
+bash
+npm install
+npm run dev
 
-## React Compiler
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Open the URL from Vite (usually http://localhost:5173).
+## How to Use
+- Click **Enter VR Training** to start XR.
+- Click the inhaler to focus it.
+- Shake by moving the inhaler (mouse).
+- Double‑click to toggle the cap after shaking.
+- Click the clipboard to view step instructions.
+- Right‑click to return focused items.
 
-## Expanding the ESLint configuration
+## Project Structure
+public/models/ # Raw + transformed GLB assets
+src/components/3d/ # R3F components (ClinicRoom, Inhaler, Clipboard)
+src/store/useTrainingStore.js
+src/App.jsx
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Notes
+- Model positions can be tweaked in `src/App.jsx` via `initialPositions`.
