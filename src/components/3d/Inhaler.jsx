@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { useTrainingStore } from '../../store/useTrainingStore'
+import { useTrainingStore, TRAINING_STEPS } from '../../store/useTrainingStore'
 
 const MOVE_SPEED = 12
 const ROTATE_SPEED = 12
@@ -22,19 +22,18 @@ export function Inhaler(props) {
   const camera = useThree((state) => state.camera)
 
   const {
-    hasShaken,
+    currentStep,
     isCapOff,
     isInhalerFocused,
     isShaking,
     shakeDuration,
     shakeElapsed,
-    shakeAmount,
-    setHasShaken,
     setCapOff,
     setInhalerFocused,
     setIsShaking,
     setShakeElapsed,
-    resetShake,
+    completeShake,
+    advanceStep,
   } = useTrainingStore()
 
   useEffect(() => {
@@ -64,15 +63,16 @@ export function Inhaler(props) {
       const movementDelta = group.current.position.distanceTo(lastPos.current)
       lastPos.current.copy(group.current.position)
 
-      if (!hasShaken) {
+      // Check if we're on a shake step (step 0 or step 9)
+      const isShakeStep = currentStep === 0 || currentStep === 9
+      if (isShakeStep) {
         const speed = movementDelta / Math.max(delta, 0.0001)
         if (speed > SHAKE_SPEED_THRESHOLD) {
           if (!isShaking) setIsShaking(true)
           const nextElapsed = shakeElapsed + delta
           setShakeElapsed(nextElapsed)
           if (nextElapsed >= shakeDuration) {
-            setHasShaken(true)
-            resetShake()
+            completeShake()
           }
         } else if (isShaking) {
           setIsShaking(false)
@@ -86,10 +86,6 @@ export function Inhaler(props) {
     }
   })
 
-  const handleFocus = () => {
-    if (!isInhalerFocused) setInhalerFocused(true)
-  }
-
   const handleReturn = (event) => {
     event.stopPropagation()
     if (isInhalerFocused) setInhalerFocused(false)
@@ -97,8 +93,27 @@ export function Inhaler(props) {
 
   const handleToggleCap = (event) => {
     event.stopPropagation()
-    if (!hasShaken) return
-    setCapOff(!isCapOff)
+    // Only allow cap removal after shake (step 1), or cap replacement at step 10
+    if (currentStep === 1 && !isCapOff) {
+      setCapOff(true)
+    } else if (currentStep === 10 && isCapOff) {
+      setCapOff(false)
+    }
+  }
+
+  // Handle click to advance through steps that require interaction
+  const handleClick = (event) => {
+    // If not focused, focus first
+    if (!isInhalerFocused) {
+      setInhalerFocused(true)
+      return
+    }
+    
+    // If focused and on a click-based step, advance
+    const step = TRAINING_STEPS[currentStep]
+    if (step && step.action === 'click') {
+      advanceStep()
+    }
   }
 
   return (
@@ -106,7 +121,7 @@ export function Inhaler(props) {
       ref={group}
       {...props}
       dispose={null}
-      onClick={handleFocus}
+      onClick={handleClick}
       onContextMenu={handleReturn}
       onDoubleClick={handleToggleCap}
     >
