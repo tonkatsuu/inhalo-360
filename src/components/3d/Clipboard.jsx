@@ -172,7 +172,7 @@ export function Clipboard(props) {
                         <lineBasicMaterial color={outlineColor} linewidth={5} depthTest={false} />
                     </lineSegments>
 
-                    <Html transform occlude={false} position={[0, 0, 2]} rotation={[Math.PI / 2, 0, 0]} distanceFactor={10000}>
+                    <Html transform occlude={false} position={[0, 0, 2]} rotation={[Math.PI / 2, 0, 0]} distanceFactor={10000} zIndexRange={[0, 0]}>
                         <div
                             style={{
                                 background: 'transparent',

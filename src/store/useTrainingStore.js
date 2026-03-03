@@ -5,7 +5,7 @@ export const TRAINING_STEPS = [
     { id: 0, text: 'Shake the inhaler well', action: 'shake' },
     { id: 1, text: 'Remove the cap', action: 'removeCap' },
     { id: 2, text: 'Hold the inhaler upright', action: 'click' },
-    { id: 3, text: 'Tilt your head back slightly', action: 'click' },
+    { id: 3, text: 'Tilt your head back slightly', action: 'tilt' },
     { id: 4, text: 'Breathe out slowly', action: 'click' },
     { id: 5, text: 'Place mouthpiece in mouth and seal with lips', action: 'click' },
     { id: 6, text: 'Breathe in slowly and press the inhaler', action: 'click' },

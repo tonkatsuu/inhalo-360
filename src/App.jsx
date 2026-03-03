@@ -5,6 +5,7 @@ import { Inhaler } from './components/3d/Inhaler'
 import { Clipboard } from './components/3d/Clipboard'
 import { ClinicRoom } from './components/3d/Clinic_vr_scene'
 import { FpsControls } from './components/3d/FpsControls'
+import { TrainingHUD } from './components/TrainingHUD'
 
 const store = createXRStore()
 
@@ -24,6 +25,8 @@ export default function App() {
       >
         Enter VR Training
       </button>
+
+      <TrainingHUD />
 
       <Canvas camera={{ position: [0, 1.6, 3], fov: 75 }}>
         <XR store={store}>
