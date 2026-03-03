@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
@@ -13,6 +13,8 @@ export function Inhaler(props) {
   const { nodes, materials } = useGLTF('/models/inhaler-transformed.glb')
   const group = useRef()
   const lastPos = useRef(new THREE.Vector3())
+  const [isHovering, setIsHovering] = useState(false)
+  const materialState = useRef(new Map())
   const original = useRef({
     pos: new THREE.Vector3(),
     quat: new THREE.Quaternion(),
@@ -20,6 +22,8 @@ export function Inhaler(props) {
   })
 
   const camera = useThree((state) => state.camera)
+  const raycaster = useMemo(() => new THREE.Raycaster(), [])
+  const forward = useMemo(() => new THREE.Vector3(), [])
 
   const {
     currentStep,
@@ -46,6 +50,72 @@ export function Inhaler(props) {
 
   const focusTarget = useMemo(() => new THREE.Vector3(), [])
   const camForward = useMemo(() => new THREE.Vector3(), [])
+  const highlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
+
+  useEffect(() => {
+    if (!group.current) return
+    materialState.current.clear()
+    group.current.traverse((child) => {
+      if (!child.isMesh) return
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((material) => {
+        if (!material || !material.isMaterial) return
+        if (!materialState.current.has(material)) {
+          materialState.current.set(material, {
+            emissive: material.emissive ? material.emissive.clone() : new THREE.Color('#000000'),
+            emissiveIntensity: material.emissiveIntensity ?? 0,
+          })
+        }
+      })
+    })
+  }, [nodes, materials])
+
+  useEffect(() => {
+    const handleGlobalDrop = (event) => {
+      if (!isInhalerFocused) return
+      event.preventDefault()
+      setInhalerFocused(false)
+    }
+
+    const handleGlobalPointerDown = (event) => {
+      if (event.button === 2) {
+        if (isInhalerFocused) {
+          event.preventDefault()
+          setInhalerFocused(false)
+        }
+        return
+      }
+      if (event.button === 0 && !isInhalerFocused && isHovering) {
+        event.preventDefault()
+        setInhalerFocused(true)
+      }
+    }
+
+    window.addEventListener('contextmenu', handleGlobalDrop)
+    window.addEventListener('pointerdown', handleGlobalPointerDown)
+    return () => {
+      window.removeEventListener('contextmenu', handleGlobalDrop)
+      window.removeEventListener('pointerdown', handleGlobalPointerDown)
+    }
+  }, [isInhalerFocused, isHovering, setInhalerFocused])
+
+  useEffect(() => {
+    const shouldHighlight = isHovering || isInhalerFocused
+    materialState.current.forEach((originalState, material) => {
+      if (!material) return
+      if (shouldHighlight) {
+        if (material.emissive) {
+          material.emissive.copy(highlightColor)
+        }
+        material.emissiveIntensity = 0.6
+      } else {
+        if (material.emissive && originalState.emissive) {
+          material.emissive.copy(originalState.emissive)
+        }
+        material.emissiveIntensity = originalState.emissiveIntensity
+      }
+    })
+  }, [highlightColor, isHovering, isInhalerFocused])
 
   useFrame((_state, delta) => {
     if (!group.current) return
@@ -84,6 +154,18 @@ export function Inhaler(props) {
       group.current.scale.lerp(original.current.scale, alphaMove)
       lastPos.current.copy(group.current.position)
     }
+  })
+
+  useFrame(() => {
+    if (!group.current) return
+    if (isInhalerFocused) {
+      if (isHovering) setIsHovering(false)
+      return
+    }
+    camera.getWorldDirection(forward)
+    raycaster.set(camera.position, forward)
+    const hits = raycaster.intersectObject(group.current, true)
+    setIsHovering(hits.length > 0)
   })
 
   const handleReturn = (event) => {

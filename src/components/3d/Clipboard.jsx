@@ -78,6 +78,35 @@ export function Clipboard(props) {
         original.current.scale.copy(group.current.scale)
     }, [])
 
+    useEffect(() => {
+        const handleGlobalDrop = (event) => {
+            if (!isClipboardFocused) return
+            event.preventDefault()
+            setClipboardFocused(false)
+        }
+
+        const handleGlobalPointerDown = (event) => {
+            if (event.button === 2) {
+                if (isClipboardFocused) {
+                    event.preventDefault()
+                    setClipboardFocused(false)
+                }
+                return
+            }
+            if (event.button === 0 && !isClipboardFocused && isHovering) {
+                event.preventDefault()
+                setClipboardFocused(true)
+            }
+        }
+
+        window.addEventListener('contextmenu', handleGlobalDrop)
+        window.addEventListener('pointerdown', handleGlobalPointerDown)
+        return () => {
+            window.removeEventListener('contextmenu', handleGlobalDrop)
+            window.removeEventListener('pointerdown', handleGlobalPointerDown)
+        }
+    }, [isClipboardFocused, isHovering, setClipboardFocused])
+
     useFrame((_state, delta) => {
         if (!group.current) return
 

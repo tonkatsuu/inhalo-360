@@ -1,10 +1,20 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
 
 export function ClinicRoom({ children, ...props }) {
   // Use the transformed model
-  const { scene } = useGLTF('/models/clinic_vr_scene-transformed.glb')
-  
+  const { scene } = useGLTF('/models/clinic_vr_scene2.glb')
+
+  useEffect(() => {
+    if (!scene) return
+    // Hide any clipboard meshes baked into the exported scene.
+    scene.traverse((child) => {
+      if (child?.name && /clipboard/i.test(child.name)) {
+        child.visible = false
+      }
+    })
+  }, [scene])
+
   return (
     <group {...props}>
       {/* Render the clinic scene */}
@@ -15,4 +25,4 @@ export function ClinicRoom({ children, ...props }) {
   )
 }
 
-useGLTF.preload('/models/clinic_vr_scene-transformed.glb')
+useGLTF.preload('/models/clinic_vr_scene2.glb')
