@@ -10,40 +10,40 @@ import { TrainingHUD } from './components/TrainingHUD'
 const store = createXRStore()
 
 export default function App() {
-  return (
-    <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
-      <button
-        style={{
-          position: 'absolute',
-          zIndex: 10,
-          bottom: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          padding: '12px 24px',
-        }}
-        onClick={() => store.enterVR()}
-      >
-        Enter VR Training
-      </button>
+    return (
+        <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
+            <button
+                style={{
+                    position: 'absolute',
+                    zIndex: 10,
+                    bottom: 20,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    padding: '12px 24px',
+                }}
+                onClick={() => store.enterVR()}
+            >
+                Enter VR Training
+            </button>
 
-      <TrainingHUD />
+            <TrainingHUD />
 
-      <Canvas camera={{ position: [0, 1.6, 3], fov: 75 }}>
-        <XR store={store}>
-          <ambientLight intensity={0.7} />
-          <directionalLight intensity={1.2} position={[5, 6, 4]} />
-          <hemisphereLight intensity={0.5} />
+            <Canvas camera={{ position: [0, 1.6, 3], fov: 75 }}>
+                <XR store={store}>
+                    <ambientLight intensity={0.7} />
+                    <directionalLight intensity={1.2} position={[5, 6, 4]} />
+                    <hemisphereLight intensity={0.5} />
 
-          {/** Tweak these to match your Unity scene layout. */}
-          {null}
+                    {/** Tweak these to match your Unity scene layout. */}
+                    {null}
 
-          <ClinicRoom>
-            <Inhaler position={[-2.8, 1.02, -0.5]} rotation={[Math.PI, Math.PI / 2, Math.PI / 2]} scale={0.002} />
-            <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
-          </ClinicRoom>
-          <FpsControls />
-        </XR>
-      </Canvas>
-    </div>
-  )
+                    <ClinicRoom>
+                        <Inhaler position={[-2.8, 1.02, -0.5]} rotation={[Math.PI, Math.PI / 2, Math.PI / 2]} scale={0.002} />
+                        <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
+                    </ClinicRoom>
+                    <FpsControls />
+                </XR>
+            </Canvas>
+        </div>
+    )
 }
