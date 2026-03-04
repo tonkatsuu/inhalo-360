@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { AudioContext, AudioRenderer } from '@convai/web-sdk/react'
 import { readConvaiConfig } from '../convai/config'
 import { useConvaiNpc } from '../hooks/useConvaiNpc'
 import { ConvaiPanel } from './ConvaiPanel'
@@ -40,7 +41,7 @@ function InvalidConvaiRuntime({ config, isDev }) {
 }
 
 function ActiveConvaiRuntime({ config, isDev }) {
-    const { state, audioControls, connect, disconnect, mute, unmute } = useConvaiNpc({
+    const { state, audioControls, room, connect, disconnect, mute, unmute } = useConvaiNpc({
         apiKey: config.apiKey,
         characterId: config.characterId,
     })
@@ -67,18 +68,26 @@ function ActiveConvaiRuntime({ config, isDev }) {
     }, [connect, disconnect, isDev, mute, state, unmute])
 
     return (
-        <ConvaiPanel
-            enabled={config.enabled}
-            isConfigured
-            state={state}
-            isThinking={state?.isThinking === true}
-            isSpeaking={state?.isSpeaking === true}
-            isAudioMuted={isAudioMuted}
-            onConnect={connect}
-            onDisconnect={disconnect}
-            onMute={mute}
-            onUnmute={unmute}
-        />
+        <>
+            {room && (
+                <AudioContext.Provider value={room}>
+                    <AudioRenderer />
+                </AudioContext.Provider>
+            )}
+
+            <ConvaiPanel
+                enabled={config.enabled}
+                isConfigured
+                state={state}
+                isThinking={state?.isThinking === true}
+                isSpeaking={state?.isSpeaking === true}
+                isAudioMuted={isAudioMuted}
+                onConnect={connect}
+                onDisconnect={disconnect}
+                onMute={mute}
+                onUnmute={unmute}
+            />
+        </>
     )
 }
 
