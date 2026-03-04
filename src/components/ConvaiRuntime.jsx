@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { AudioContext, AudioRenderer } from '@convai/web-sdk/react'
 import { readConvaiConfig } from '../convai/config'
-import { useConvaiNpc } from '../hooks/useConvaiNpc'
+import { useConvaiRuntime } from '../convai/useConvaiRuntime'
 import { ConvaiPanel } from './ConvaiPanel'
 
 function InvalidConvaiRuntime({ config, isDev }) {
@@ -41,10 +41,7 @@ function InvalidConvaiRuntime({ config, isDev }) {
 }
 
 function ActiveConvaiRuntime({ config, isDev }) {
-    const { state, audioControls, room, connect, disconnect, mute, unmute } = useConvaiNpc({
-        apiKey: config.apiKey,
-        characterId: config.characterId,
-    })
+    const { state, audioControls, room, connect, disconnect, mute, unmute } = useConvaiRuntime()
     const isAudioMuted = audioControls?.isAudioMuted ?? true
 
     useEffect(() => {
