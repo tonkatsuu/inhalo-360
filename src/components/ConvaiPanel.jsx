@@ -85,10 +85,12 @@ export function ConvaiPanel({
 
     return (
         <aside
+            data-ui-overlay="true"
             style={panelStyle}
             onPointerDown={handlePointerEvent}
             onPointerUp={handlePointerEvent}
             onClick={handlePointerEvent}
+            onContextMenu={handlePointerEvent}
         >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ fontSize: 14, fontWeight: 700 }}>Convai Debug</div>

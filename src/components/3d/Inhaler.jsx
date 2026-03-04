@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { useTrainingStore, TRAINING_STEPS } from '../../store/useTrainingStore'
+import { isFromOverlayElement } from '../../utils/dom'
 
 const MOVE_SPEED = 12
 const ROTATE_SPEED = 12
@@ -74,12 +75,14 @@ export function Inhaler(props) {
 
     useEffect(() => {
         const handleGlobalDrop = (event) => {
+            if (isFromOverlayElement(event.target)) return
             if (!isInhalerFocused) return
             event.preventDefault()
             setInhalerFocused(false)
         }
 
         const handleGlobalPointerDown = (event) => {
+            if (isFromOverlayElement(event.target)) return
             if (event.button === 2) {
                 if (isInhalerFocused) {
                     event.preventDefault()
@@ -195,6 +198,7 @@ export function Inhaler(props) {
 
     // Handle click to advance through steps that require interaction
     const handleClick = (event) => {
+        if (isFromOverlayElement(event.target)) return
         // If not focused, focus first
         if (!isInhalerFocused) {
             setInhalerFocused(true)

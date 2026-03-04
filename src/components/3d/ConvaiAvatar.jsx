@@ -137,6 +137,7 @@ export function ConvaiAvatar(props) {
                         skeleton={node.skeleton}
                         morphTargetDictionary={node.morphTargetDictionary}
                         morphTargetInfluences={node.morphTargetInfluences}
+                        raycast={() => null}
                         castShadow
                         receiveShadow
                     />

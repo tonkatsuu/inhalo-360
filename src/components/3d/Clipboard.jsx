@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Html, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { useTrainingStore, TRAINING_STEPS } from '../../store/useTrainingStore'
+import { isFromOverlayElement } from '../../utils/dom'
 
 const MOVE_SPEED = 30
 const ROTATE_SPEED = 40
@@ -80,12 +81,14 @@ export function Clipboard(props) {
 
     useEffect(() => {
         const handleGlobalDrop = (event) => {
+            if (isFromOverlayElement(event.target)) return
             if (!isClipboardFocused) return
             event.preventDefault()
             setClipboardFocused(false)
         }
 
         const handleGlobalPointerDown = (event) => {
+            if (isFromOverlayElement(event.target)) return
             if (event.button === 2) {
                 if (isClipboardFocused) {
                     event.preventDefault()
@@ -148,6 +151,7 @@ export function Clipboard(props) {
     }
 
     const handleReturn = (event) => {
+        if (isFromOverlayElement(event.target)) return
         event.stopPropagation()
         if (isClipboardFocused) setClipboardFocused(false)
     }
