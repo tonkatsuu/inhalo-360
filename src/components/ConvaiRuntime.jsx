@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { readConvaiConfig } from '../convai/config'
 import { useConvaiNpc } from '../hooks/useConvaiNpc'
+import { ConvaiPanel } from './ConvaiPanel'
 
 function InvalidConvaiRuntime({ config, isDev }) {
     const warnedRef = useRef(false)
@@ -26,16 +27,24 @@ function InvalidConvaiRuntime({ config, isDev }) {
         return () => {
             delete window.__INHALO_CONVAI__
         }
-    })
+    }, [config.missingKeys, isDev])
 
-    return null
+    return (
+        <ConvaiPanel
+            enabled={config.enabled}
+            isConfigured={false}
+            missingKeys={config.missingKeys}
+            isAudioMuted
+        />
+    )
 }
 
 function ActiveConvaiRuntime({ config, isDev }) {
-    const { state, connect, disconnect, mute, unmute } = useConvaiNpc({
+    const { state, audioControls, connect, disconnect, mute, unmute } = useConvaiNpc({
         apiKey: config.apiKey,
         characterId: config.characterId,
     })
+    const isAudioMuted = audioControls?.isAudioMuted ?? true
 
     useEffect(() => {
         if (!isDev) {
@@ -55,9 +64,22 @@ function ActiveConvaiRuntime({ config, isDev }) {
         return () => {
             delete window.__INHALO_CONVAI__
         }
-    })
+    }, [connect, disconnect, isDev, mute, state, unmute])
 
-    return null
+    return (
+        <ConvaiPanel
+            enabled={config.enabled}
+            isConfigured
+            state={state}
+            isThinking={state?.isThinking === true}
+            isSpeaking={state?.isSpeaking === true}
+            isAudioMuted={isAudioMuted}
+            onConnect={connect}
+            onDisconnect={disconnect}
+            onMute={mute}
+            onUnmute={unmute}
+        />
+    )
 }
 
 export function ConvaiRuntime({ config }) {
