@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { XR, createXRStore } from '@react-three/xr'
+import * as THREE from 'three'
 import { Inhaler } from './components/3d/Inhaler'
 import { Clipboard } from './components/3d/Clipboard'
 import { ClinicRoom } from './components/3d/Clinic_vr_scene'
@@ -20,6 +21,11 @@ const convaiConfig = readConvaiConfig()
 const showConvaiAvatar = convaiConfig.enabled && convaiConfig.isConfigured
 
 export default function App() {
+    const [collisionLayout, setCollisionLayout] = useState(null)
+    const handleCollisionLayoutChange = useCallback((nextLayout) => {
+        setCollisionLayout(nextLayout)
+    }, [])
+
     return (
         <ConvaiProvider config={convaiConfig}>
             <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
@@ -45,14 +51,19 @@ export default function App() {
 
                 <Canvas camera={{ position: [-2.35, 1.6, 1.15], rotation: [-0.06, 0, 0], fov: 75 }}>
                     <XR store={store}>
-                        <ambientLight intensity={0.7} />
-                        <directionalLight intensity={1.2} position={[5, 6, 4]} />
-                        <hemisphereLight intensity={0.5} />
+                        <color attach="background" args={['#e9dfcf']} />
+                        <fog attach="fog" args={['#e9dfcf', 8, 28]} />
+                        <ambientLight intensity={0.9} color={new THREE.Color('#f3ecdf')} />
+                        <directionalLight intensity={0.95} position={[4, 5, 3]} color={new THREE.Color('#fff2de')} />
+                        <hemisphereLight intensity={0.75} color={new THREE.Color('#f6efe3')} groundColor={new THREE.Color('#7b6655')} />
+                        <pointLight intensity={0.55} position={[-2.5, 2.8, -0.8]} color={new THREE.Color('#ffe9c8')} />
+                        <pointLight intensity={0.35} position={[0.8, 2.1, -4.6]} color={new THREE.Color('#f6d9ad')} />
 
                         {/** Tweak these to match your Unity scene layout. */}
                         {null}
 
                         <ClinicRoom
+                            onCollisionLayoutChange={handleCollisionLayoutChange}
                             convaiAvatar={
                                 showConvaiAvatar ? (
                                     <React.Suspense fallback={null}>
@@ -66,7 +77,7 @@ export default function App() {
                         </ClinicRoom>
                         <TrainingStartPanel3D position={[-2.35, 1.7, -0.32]} />
                         <TrainingReviewPanel3D position={[-2.35, 1.78, -0.42]} />
-                        <FpsControls canLockPointer />
+                        <FpsControls canLockPointer collisionLayout={collisionLayout} />
                     </XR>
                 </Canvas>
             </div>

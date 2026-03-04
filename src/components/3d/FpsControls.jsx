@@ -2,7 +2,55 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
-export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer = true }) {
+const PLAYER_RADIUS = 0.28
+const PLAYER_HEIGHT = 1.65
+const PLAYER_HEAD_MARGIN = 0.1
+
+function isHeightOverlapping(position, obstacle) {
+  const bodyBottom = position.y - PLAYER_HEIGHT
+  const bodyTop = position.y + PLAYER_HEAD_MARGIN
+  return bodyTop > obstacle.min[1] && bodyBottom < obstacle.max[1]
+}
+
+function isInsideRoomBounds(position, room) {
+  if (!room) {
+    return true
+  }
+
+  return (
+    position.x - PLAYER_RADIUS >= room.min[0] &&
+    position.x + PLAYER_RADIUS <= room.max[0] &&
+    position.z - PLAYER_RADIUS >= room.min[2] &&
+    position.z + PLAYER_RADIUS <= room.max[2]
+  )
+}
+
+function isIntersectingObstacle(position, obstacle) {
+  if (!isHeightOverlapping(position, obstacle)) {
+    return false
+  }
+
+  return (
+    position.x + PLAYER_RADIUS > obstacle.min[0] &&
+    position.x - PLAYER_RADIUS < obstacle.max[0] &&
+    position.z + PLAYER_RADIUS > obstacle.min[2] &&
+    position.z - PLAYER_RADIUS < obstacle.max[2]
+  )
+}
+
+function canOccupyPosition(position, collisionLayout) {
+  if (!collisionLayout) {
+    return true
+  }
+
+  if (!isInsideRoomBounds(position, collisionLayout.room)) {
+    return false
+  }
+
+  return !collisionLayout.obstacles?.some((obstacle) => isIntersectingObstacle(position, obstacle))
+}
+
+export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer = true, collisionLayout = null }) {
   const { camera, gl } = useThree()
   const keys = useRef({})
   const yaw = useRef(0)
@@ -10,6 +58,7 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
   const isLocked = useRef(false)
   const up = useRef(new THREE.Vector3(0, 1, 0))
   const lookEuler = useRef(new THREE.Euler(0, 0, 0, 'YXZ'))
+  const proposedPosition = useRef(new THREE.Vector3())
 
   useEffect(() => {
     const initialEuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
@@ -95,7 +144,17 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
 
     if (direction.lengthSq() > 0) {
       direction.normalize().multiplyScalar(moveSpeed * delta)
-      camera.position.add(direction)
+      proposedPosition.current.copy(camera.position)
+      proposedPosition.current.x += direction.x
+      if (canOccupyPosition(proposedPosition.current, collisionLayout)) {
+        camera.position.x = proposedPosition.current.x
+      }
+
+      proposedPosition.current.copy(camera.position)
+      proposedPosition.current.z += direction.z
+      if (canOccupyPosition(proposedPosition.current, collisionLayout)) {
+        camera.position.z = proposedPosition.current.z
+      }
     }
   })
 
