@@ -2,7 +2,17 @@ import React from 'react'
 import { useTrainingStore, TRAINING_STEPS } from '../store/useTrainingStore'
 
 export function TrainingHUD() {
-    const { currentStep, completedSteps, isTrainingComplete } = useTrainingStore()
+    const { currentStep, completedSteps, isTrainingComplete, sessionPhase, sessionError } = useTrainingStore()
+
+    const statusText = sessionError
+        ? sessionError
+        : sessionPhase === 'idle'
+            ? 'Waiting to start training'
+            : sessionPhase === 'starting'
+                ? 'Connecting to pharmacist...'
+                : sessionPhase === 'completed'
+                    ? 'Training complete'
+                    : null
 
     return (
         <div
@@ -26,6 +36,20 @@ export function TrainingHUD() {
             <div style={{ fontWeight: 'bold', fontSize: 13, marginBottom: 10, color: '#ffd46b' }}>
                 Inhaler Training
             </div>
+            {statusText && (
+                <div
+                    style={{
+                        marginBottom: 10,
+                        padding: '6px 8px',
+                        borderRadius: 6,
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        color: sessionError ? '#fca5a5' : '#cbd5e1',
+                        lineHeight: 1.4,
+                    }}
+                >
+                    {statusText}
+                </div>
+            )}
             {TRAINING_STEPS.map((step) => {
                 const isCompleted = completedSteps.includes(step.id)
                 const isCurrent = currentStep === step.id

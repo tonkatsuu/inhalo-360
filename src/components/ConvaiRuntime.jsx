@@ -4,6 +4,8 @@ import { readConvaiConfig } from '../convai/config'
 import { useConvaiRuntime } from '../convai/useConvaiRuntime'
 import { ConvaiPanel } from './ConvaiPanel'
 
+const SHOW_DEBUG_PANEL = readConvaiConfig.isDev === true && import.meta.env.VITE_SHOW_CONVAI_DEBUG_PANEL === 'true'
+
 function InvalidConvaiRuntime({ config, isDev }) {
     const warnedRef = useRef(false)
 
@@ -30,14 +32,11 @@ function InvalidConvaiRuntime({ config, isDev }) {
         }
     }, [config.missingKeys, isDev])
 
-    return (
-        <ConvaiPanel
-            enabled={config.enabled}
-            isConfigured={false}
-            missingKeys={config.missingKeys}
-            isAudioMuted
-        />
-    )
+    if (!SHOW_DEBUG_PANEL) {
+        return null
+    }
+
+    return <ConvaiPanel enabled={config.enabled} isConfigured={false} missingKeys={config.missingKeys} isAudioMuted />
 }
 
 function ActiveConvaiRuntime({ config, isDev }) {
@@ -72,18 +71,20 @@ function ActiveConvaiRuntime({ config, isDev }) {
                 </AudioContext.Provider>
             )}
 
-            <ConvaiPanel
-                enabled={config.enabled}
-                isConfigured
-                state={state}
-                isThinking={state?.isThinking === true}
-                isSpeaking={state?.isSpeaking === true}
-                isAudioMuted={isAudioMuted}
-                onConnect={connect}
-                onDisconnect={disconnect}
-                onMute={mute}
-                onUnmute={unmute}
-            />
+            {SHOW_DEBUG_PANEL && (
+                <ConvaiPanel
+                    enabled={config.enabled}
+                    isConfigured
+                    state={state}
+                    isThinking={state?.isThinking === true}
+                    isSpeaking={state?.isSpeaking === true}
+                    isAudioMuted={isAudioMuted}
+                    onConnect={connect}
+                    onDisconnect={disconnect}
+                    onMute={mute}
+                    onUnmute={unmute}
+                />
+            )}
         </>
     )
 }

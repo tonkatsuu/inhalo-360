@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
@@ -34,13 +34,16 @@ export function Inhaler(props) {
         isShaking,
         shakeDuration,
         shakeElapsed,
+        sessionPhase,
         setCapOff,
         setInhalerFocused,
         setIsShaking,
         setShakeElapsed,
+        setLastUserAction,
         completeShake,
         advanceStep,
         completeStep,
+        recordMistake,
     } = useTrainingStore()
 
     useEffect(() => {
@@ -54,6 +57,50 @@ export function Inhaler(props) {
     const focusTarget = useMemo(() => new THREE.Vector3(), [])
     const camForward = useMemo(() => new THREE.Vector3(), [])
     const highlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
+
+    const recordBeforeStartMistake = useCallback(() => {
+        recordMistake({
+            stepId: currentStep,
+            code: 'attempt_action_before_start',
+            message: 'The inhaler was used before the training session was started.',
+            correction: 'Press Start Training first, then follow the guided checklist from the beginning.',
+        })
+    }, [currentStep, recordMistake])
+
+    const recordWrongActionMistake = useCallback(() => {
+        const step = TRAINING_STEPS[currentStep]
+        if (!step) return
+        recordMistake({
+            stepId: currentStep,
+            code: 'wrong_inhaler_action_for_step',
+            message: `The inhaler action did not match the current step: "${step.text}".`,
+            correction: `Return to the current step and complete it correctly: ${step.text}.`,
+        })
+    }, [currentStep, recordMistake])
+
+    const handleFocusedActionAttempt = useCallback(() => {
+        const step = TRAINING_STEPS[currentStep]
+        if (!step) return
+
+        setLastUserAction('inhaler-click')
+
+        if (step.action === 'click') {
+            advanceStep()
+            return
+        }
+
+        if (step.action === 'removeCap' && !isCapOff) {
+            setCapOff(true)
+            return
+        }
+
+        if (step.action === 'replaceCap' && isCapOff) {
+            setCapOff(false)
+            return
+        }
+
+        recordWrongActionMistake()
+    }, [advanceStep, currentStep, isCapOff, recordWrongActionMistake, setCapOff, setLastUserAction])
 
     useEffect(() => {
         if (!group.current) return
@@ -77,12 +124,17 @@ export function Inhaler(props) {
         const handleGlobalDrop = (event) => {
             if (isFromOverlayElement(event.target)) return
             if (!isInhalerFocused) return
+            if (sessionPhase !== 'active') return
             event.preventDefault()
             setInhalerFocused(false)
         }
 
         const handleGlobalPointerDown = (event) => {
             if (isFromOverlayElement(event.target)) return
+            if (event.button === 0 && sessionPhase !== 'active' && isHovering) {
+                recordBeforeStartMistake()
+                return
+            }
             if (event.button === 2) {
                 if (isInhalerFocused) {
                     event.preventDefault()
@@ -95,16 +147,7 @@ export function Inhaler(props) {
                     event.preventDefault()
                     setInhalerFocused(true)
                 } else if (isInhalerFocused) {
-                    // Handle step interactions while focused
-                    const step = TRAINING_STEPS[currentStep]
-                    if (!step) return
-                    if (step.action === 'click') {
-                        advanceStep()
-                    } else if (step.action === 'removeCap' && !isCapOff) {
-                        setCapOff(true)
-                    } else if (step.action === 'replaceCap' && isCapOff) {
-                        setCapOff(false)
-                    }
+                    handleFocusedActionAttempt()
                 }
             }
         }
@@ -115,7 +158,18 @@ export function Inhaler(props) {
             window.removeEventListener('contextmenu', handleGlobalDrop)
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
         }
-    }, [isInhalerFocused, isHovering, setInhalerFocused, currentStep, isCapOff, advanceStep, setCapOff])
+    }, [
+        advanceStep,
+        currentStep,
+        handleFocusedActionAttempt,
+        isCapOff,
+        isHovering,
+        isInhalerFocused,
+        recordBeforeStartMistake,
+        sessionPhase,
+        setCapOff,
+        setInhalerFocused,
+    ])
 
     useEffect(() => {
         const shouldHighlight = isHovering || isInhalerFocused
@@ -199,22 +253,17 @@ export function Inhaler(props) {
     // Handle click to advance through steps that require interaction
     const handleClick = (event) => {
         if (isFromOverlayElement(event.target)) return
+        if (sessionPhase !== 'active') {
+            recordBeforeStartMistake()
+            return
+        }
         // If not focused, focus first
         if (!isInhalerFocused) {
             setInhalerFocused(true)
             return
         }
 
-        // If focused, handle the current step's action
-        const step = TRAINING_STEPS[currentStep]
-        if (!step) return
-        if (step.action === 'click') {
-            advanceStep()
-        } else if (step.action === 'removeCap' && !isCapOff) {
-            setCapOff(true)
-        } else if (step.action === 'replaceCap' && isCapOff) {
-            setCapOff(false)
-        }
+        handleFocusedActionAttempt()
     }
 
     return (

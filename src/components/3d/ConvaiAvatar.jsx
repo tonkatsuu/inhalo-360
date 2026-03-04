@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
+import { ConvaiSpeechBillboard } from './ConvaiSpeechBillboard'
 
 const AVATAR_MODEL_URL =
     'https://models.readyplayer.me/661feb3563b4a87a148eb0df.glb?morphTargets=ARKit,Oculus%20Visemes'
@@ -127,6 +128,7 @@ export function ConvaiAvatar(props) {
 
     return (
         <group {...props} dispose={null}>
+            <ConvaiSpeechBillboard position={[0, 2.05, 0]} />
             <primitive object={nodes.Hips} />
             {Object.values(nodes).map((node, index) =>
                 node.isMesh ? (

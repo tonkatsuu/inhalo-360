@@ -6,9 +6,13 @@ import { Clipboard } from './components/3d/Clipboard'
 import { ClinicRoom } from './components/3d/Clinic_vr_scene'
 import { ConvaiAvatar } from './components/3d/ConvaiAvatar'
 import { FpsControls } from './components/3d/FpsControls'
+import { TrainingStartPanel3D } from './components/3d/TrainingStartPanel3D'
+import { TrainingReviewPanel3D } from './components/3d/TrainingReviewPanel3D'
 import { ConvaiProvider } from './convai/ConvaiContext'
+import { ConvaiTrainingOrchestrator } from './components/ConvaiTrainingOrchestrator'
 import { TrainingHUD } from './components/TrainingHUD'
 import { ConvaiRuntime } from './components/ConvaiRuntime'
+import { TrainingStepFeedback } from './components/TrainingStepFeedback'
 import { readConvaiConfig } from './convai/config'
 
 const store = createXRStore()
@@ -20,6 +24,8 @@ export default function App() {
         <ConvaiProvider config={convaiConfig}>
             <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
                 {convaiConfig.enabled && <ConvaiRuntime config={convaiConfig} />}
+                <ConvaiTrainingOrchestrator />
+                <TrainingStepFeedback />
 
                 <button
                     style={{
@@ -37,7 +43,7 @@ export default function App() {
 
                 <TrainingHUD />
 
-                <Canvas camera={{ position: [0, 1.6, 3], fov: 75 }}>
+                <Canvas camera={{ position: [-2.35, 1.6, 1.15], rotation: [-0.06, 0, 0], fov: 75 }}>
                     <XR store={store}>
                         <ambientLight intensity={0.7} />
                         <directionalLight intensity={1.2} position={[5, 6, 4]} />
@@ -58,7 +64,9 @@ export default function App() {
                             <Inhaler position={[-2.8, 1.02, -0.5]} rotation={[Math.PI, Math.PI / 2, Math.PI / 2]} scale={0.002} />
                             <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
                         </ClinicRoom>
-                        <FpsControls />
+                        <TrainingStartPanel3D position={[-2.35, 1.7, -0.32]} />
+                        <TrainingReviewPanel3D position={[-2.35, 1.78, -0.42]} />
+                        <FpsControls canLockPointer />
                     </XR>
                 </Canvas>
             </div>

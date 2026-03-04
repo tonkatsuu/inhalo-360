@@ -15,63 +15,135 @@ export const TRAINING_STEPS = [
     { id: 10, text: 'Replace the mouthpiece cover', action: 'replaceCap' },
 ]
 
+function getInitialState() {
+    return {
+        currentStep: 0,
+        completedSteps: [],
+        isCapOff: false,
+        isInhalerFocused: false,
+        isClipboardFocused: false,
+        isShaking: false,
+        isTrainingComplete: false,
+        shakeDuration: 0.5,
+        shakeElapsed: 0,
+        lastAdvanceTs: 0,
+        shakeAmount: 0.02,
+        focusDistanceOffset: 0.5,
+        sessionPhase: 'idle',
+        hasTrainingStarted: false,
+        hasReviewOpen: false,
+        mistakes: [],
+        lastSpokenStepKey: null,
+        lastUserAction: null,
+        startedAt: null,
+        completedAt: null,
+        sessionError: null,
+    }
+}
+
+function buildMistakeId(code, stepId) {
+    return `${code}:${stepId ?? 'none'}`
+}
+
 export const useTrainingStore = create((set, get) => ({
-    // Procedure state
-    currentStep: 0,
-    completedSteps: [],
-    isCapOff: false,
-    isInhalerFocused: false,
-    isClipboardFocused: false,
-    isShaking: false,
-    isTrainingComplete: false,
+    ...getInitialState(),
 
-    // Timers / counters
-    shakeDuration: 0.5,
-    shakeElapsed: 0,
-    lastAdvanceTs: 0,
+    completeTraining: () =>
+        set({
+            sessionPhase: 'completed',
+            hasReviewOpen: true,
+            isTrainingComplete: true,
+            completedAt: Date.now(),
+            isInhalerFocused: false,
+            isClipboardFocused: false,
+            isShaking: false,
+            shakeElapsed: 0,
+        }),
 
-    // Tuning values (mirrors Unity config)
-    shakeAmount: 0.02,
-    focusDistanceOffset: 0.5,
-
-    // Actions
     completeStep: (stepId) => {
-        const { currentStep, completedSteps } = get()
-        if (stepId !== currentStep) return // Must complete in order
+        const { currentStep, completedSteps, sessionPhase } = get()
+        if (sessionPhase !== 'active') return
+        if (stepId !== currentStep) return
 
         const newCompleted = [...completedSteps, stepId]
         const nextStep = currentStep + 1
         const isComplete = nextStep >= TRAINING_STEPS.length
 
+        if (isComplete) {
+            set({
+                completedSteps: newCompleted,
+            })
+            get().completeTraining()
+            return
+        }
+
         set({
             completedSteps: newCompleted,
-            currentStep: isComplete ? currentStep : nextStep,
-            isTrainingComplete: isComplete,
+            currentStep: nextStep,
+            isTrainingComplete: false,
         })
     },
 
     setCapOff: (value) => {
-        const { currentStep } = get()
+        const { currentStep, sessionPhase } = get()
+        if (sessionPhase !== 'active') return
+
         set({ isCapOff: value })
-        // Complete step 1 when cap is removed
         if (value && currentStep === 1) {
             get().completeStep(1)
         }
-        // Complete step 10 when cap is replaced
         if (!value && currentStep === 10) {
             get().completeStep(10)
         }
     },
 
-    setInhalerFocused: (value) => set({ isInhalerFocused: value }),
-    setClipboardFocused: (value) => set({ isClipboardFocused: value }),
+    setInhalerFocused: (value) => {
+        const { sessionPhase } = get()
+        if (value && sessionPhase !== 'active') return
+        set({ isInhalerFocused: value })
+    },
+
+    setClipboardFocused: (value) => {
+        const { sessionPhase } = get()
+        if (value && sessionPhase !== 'active') return
+        set({ isClipboardFocused: value })
+    },
+
     setIsShaking: (value) => set({ isShaking: value }),
     setShakeElapsed: (value) => set({ shakeElapsed: value }),
+    setSessionError: (message) => set({ sessionError: message }),
+    clearSessionError: () => set({ sessionError: null }),
+    setLastUserAction: (value) => set({ lastUserAction: value }),
+
+    recordMistake: ({ stepId = null, code, message, correction }) => {
+        const { mistakes } = get()
+        const id = buildMistakeId(code, stepId)
+        if (mistakes.some((mistake) => mistake.id === id)) {
+            return
+        }
+
+        set({
+            mistakes: [
+                ...mistakes,
+                {
+                    id,
+                    stepId,
+                    code,
+                    message,
+                    correction,
+                    timestamp: Date.now(),
+                },
+            ],
+        })
+    },
+
+    clearMistakes: () => set({ mistakes: [] }),
 
     completeShake: () => {
-        const { currentStep } = get()
+        const { currentStep, sessionPhase } = get()
+        if (sessionPhase !== 'active') return
+
         set({ isShaking: false, shakeElapsed: 0 })
-        // Complete step 0 (initial shake) or step 9 (optional second shake)
         if (currentStep === 0) {
             get().completeStep(0)
         } else if (currentStep === 9) {
@@ -79,11 +151,10 @@ export const useTrainingStore = create((set, get) => ({
         }
     },
 
-    // Advance to next step (for click-based actions)
     advanceStep: () => {
         const now = performance.now()
-        const { currentStep, lastAdvanceTs } = get()
-        // Guard against duplicate click events firing in quick succession
+        const { currentStep, lastAdvanceTs, sessionPhase } = get()
+        if (sessionPhase !== 'active') return
         if (now - lastAdvanceTs < 150) return
 
         const step = TRAINING_STEPS[currentStep]
@@ -93,18 +164,47 @@ export const useTrainingStore = create((set, get) => ({
         }
     },
 
+    markTrainingActive: () => {
+        const { sessionPhase } = get()
+        if (sessionPhase !== 'starting') return
+        set({ sessionPhase: 'active', sessionError: null })
+    },
+
+    markStepNarrated: (stepKey) => set({ lastSpokenStepKey: stepKey }),
+
+    closeReview: () => set({ hasReviewOpen: false }),
+
+    startTraining: () =>
+        set((state) => ({
+            ...getInitialState(),
+            sessionPhase: 'starting',
+            hasTrainingStarted: true,
+            startedAt: Date.now(),
+            completedAt: null,
+            sessionError: null,
+            mistakes: [],
+            lastSpokenStepKey: null,
+            lastUserAction: null,
+            shakeDuration: state.shakeDuration,
+            shakeAmount: state.shakeAmount,
+            focusDistanceOffset: state.focusDistanceOffset,
+        })),
+
     resetShake: () => set({ isShaking: false, shakeElapsed: 0 }),
 
     resetTraining: () =>
-        set({
-            currentStep: 0,
-            completedSteps: [],
-            isCapOff: false,
-            isInhalerFocused: false,
-            isClipboardFocused: false,
-            isShaking: false,
-            isTrainingComplete: false,
-            shakeElapsed: 0,
-            lastAdvanceTs: 0,
-        }),
+        set((state) => ({
+            ...getInitialState(),
+            shakeDuration: state.shakeDuration,
+            shakeAmount: state.shakeAmount,
+            focusDistanceOffset: state.focusDistanceOffset,
+        })),
+
+    resetTrainingSession: () =>
+        set((state) => ({
+            ...getInitialState(),
+            shakeDuration: state.shakeDuration,
+            shakeAmount: state.shakeAmount,
+            focusDistanceOffset: state.focusDistanceOffset,
+        })),
 }))

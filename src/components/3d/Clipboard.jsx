@@ -71,6 +71,8 @@ export function Clipboard(props) {
 
     const { currentStep, completedSteps, isClipboardFocused, setClipboardFocused, focusDistanceOffset, isTrainingComplete } =
         useTrainingStore()
+    const sessionPhase = useTrainingStore((state) => state.sessionPhase)
+    const recordMistake = useTrainingStore((state) => state.recordMistake)
 
     useEffect(() => {
         if (!group.current) return
@@ -83,12 +85,22 @@ export function Clipboard(props) {
         const handleGlobalDrop = (event) => {
             if (isFromOverlayElement(event.target)) return
             if (!isClipboardFocused) return
+            if (sessionPhase !== 'active') return
             event.preventDefault()
             setClipboardFocused(false)
         }
 
         const handleGlobalPointerDown = (event) => {
             if (isFromOverlayElement(event.target)) return
+            if (event.button === 0 && sessionPhase !== 'active' && isHovering) {
+                recordMistake({
+                    stepId: currentStep,
+                    code: 'attempt_action_before_start',
+                    message: 'The checklist was opened before the training session was started.',
+                    correction: 'Press Start Training first, then follow the guided checklist from the beginning.',
+                })
+                return
+            }
             if (event.button === 2) {
                 if (isClipboardFocused) {
                     event.preventDefault()
@@ -108,7 +120,7 @@ export function Clipboard(props) {
             window.removeEventListener('contextmenu', handleGlobalDrop)
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
         }
-    }, [isClipboardFocused, isHovering, setClipboardFocused])
+    }, [currentStep, isClipboardFocused, isHovering, recordMistake, sessionPhase, setClipboardFocused])
 
     useFrame((_state, delta) => {
         if (!group.current) return
@@ -147,6 +159,15 @@ export function Clipboard(props) {
     })
 
     const handleFocus = () => {
+        if (sessionPhase !== 'active') {
+            recordMistake({
+                stepId: currentStep,
+                code: 'attempt_action_before_start',
+                message: 'The checklist was opened before the training session was started.',
+                correction: 'Press Start Training first, then follow the guided checklist from the beginning.',
+            })
+            return
+        }
         if (!isClipboardFocused) setClipboardFocused(true)
     }
 
