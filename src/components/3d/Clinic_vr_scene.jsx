@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 
-export function ClinicRoom({ children, ...props }) {
+const CONVAI_TABLE_OFFSET = [-1.95, 0, -3.35]
+
+export function ClinicRoom({ children, convaiAvatar = null, ...props }) {
   // Use the transformed model
   const { scene } = useGLTF('/models/clinic_vr_scene2.glb')
 
@@ -15,10 +17,32 @@ export function ClinicRoom({ children, ...props }) {
     })
   }, [scene])
 
+  const convaiAnchorPosition = useMemo(() => {
+    if (!scene) {
+      return null
+    }
+
+    const tableRoot = scene.getObjectByName('TableRoot')
+    if (!tableRoot) {
+      return null
+    }
+
+    return [
+      tableRoot.position.x + CONVAI_TABLE_OFFSET[0],
+      CONVAI_TABLE_OFFSET[1],
+      tableRoot.position.z + CONVAI_TABLE_OFFSET[2],
+    ]
+  }, [scene])
+
   return (
     <group {...props}>
       {/* Render the clinic scene */}
       <primitive object={scene} />
+      {convaiAvatar && convaiAnchorPosition && (
+        <group position={convaiAnchorPosition}>
+          {convaiAvatar}
+        </group>
+      )}
       {/* Render children (Inhaler, Clipboard, etc.) */}
       {children}
     </group>

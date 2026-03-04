@@ -46,14 +46,17 @@ export default function App() {
                         {/** Tweak these to match your Unity scene layout. */}
                         {null}
 
-                        <ClinicRoom>
+                        <ClinicRoom
+                            convaiAvatar={
+                                showConvaiAvatar ? (
+                                    <React.Suspense fallback={null}>
+                                        <ConvaiAvatar scale={[1.12, 1.08, 1.12]} />
+                                    </React.Suspense>
+                                ) : null
+                            }
+                        >
                             <Inhaler position={[-2.8, 1.02, -0.5]} rotation={[Math.PI, Math.PI / 2, Math.PI / 2]} scale={0.002} />
                             <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
-                            {showConvaiAvatar && (
-                                <React.Suspense fallback={null}>
-                                    <ConvaiAvatar position={[1.4, 0, -1.2]} />
-                                </React.Suspense>
-                            )}
                         </ClinicRoom>
                         <FpsControls />
                     </XR>
