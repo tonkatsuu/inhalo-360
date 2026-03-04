@@ -72,8 +72,6 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002 }) {
     if (keys.current.KeyS) direction.sub(forward)
     if (keys.current.KeyD) direction.add(right)
     if (keys.current.KeyA) direction.sub(right)
-    if (keys.current.Space) direction.y += 1
-    if (keys.current.ShiftLeft || keys.current.ShiftRight) direction.y -= 1
 
     if (direction.lengthSq() > 0) {
       direction.normalize().multiplyScalar(moveSpeed * delta)

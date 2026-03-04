@@ -6,12 +6,17 @@ import { Clipboard } from './components/3d/Clipboard'
 import { ClinicRoom } from './components/3d/Clinic_vr_scene'
 import { FpsControls } from './components/3d/FpsControls'
 import { TrainingHUD } from './components/TrainingHUD'
+import { ConvaiRuntime } from './components/ConvaiRuntime'
+import { readConvaiConfig } from './convai/config'
 
 const store = createXRStore()
+const convaiConfig = readConvaiConfig()
 
 export default function App() {
     return (
         <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
+            {convaiConfig.enabled && <ConvaiRuntime config={convaiConfig} />}
+
             <button
                 style={{
                     position: 'absolute',
