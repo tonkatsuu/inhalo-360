@@ -2,7 +2,8 @@ import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { useTrainingStore } from '../../store/useTrainingStore'
+import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
+import { BrandChip3D } from './BrandChip3D'
 
 const PANEL_WIDTH = 1.34
 const PANEL_HEIGHT = 1.12
@@ -47,21 +48,31 @@ export function TrainingReviewPanel3D(props) {
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
 
-    const { sessionPhase, hasReviewOpen, mistakes, resetTrainingSession, closeReview } = useTrainingStore()
+    const { sessionPhase, hasReviewOpen, mistakes, stepResults, resetTrainingSession, closeReview } = useTrainingStore()
 
     const isVisible = sessionPhase === 'completed' && hasReviewOpen
     const isRendered = isMounted || isVisible
 
-    const summaryText =
-        mistakes.length === 0
-            ? 'No detectable mistakes recorded. Ava is still available if you want follow-up advice.'
-            : `${mistakes.length} issue${mistakes.length === 1 ? '' : 's'} detected. Review the key corrections below, then retry if needed.`
+    const reviewItems = stepResults
+        .filter((result) => result.failures > 0)
+        .map((result) => {
+            const step = getStepById(result.stepId)
+            const latestMistake = [...mistakes].reverse().find((mistake) => mistake.stepId === result.stepId)
+            return {
+                id: result.stepId,
+                title: clampLine(`${step?.shortLabel ?? step?.instruction ?? result.stepId}: ${result.failures} correction${result.failures === 1 ? '' : 's'} needed`, 52),
+                detail: clampLine(
+                    latestMistake?.correction ??
+                        `Completed after ${result.attempts} attempts. The user improved on retry during this step.`,
+                    52,
+                ),
+            }
+        })
 
-    const reviewItems = mistakes.map((mistake) => ({
-        id: mistake.id,
-        title: clampLine(mistake.message, 52),
-        detail: clampLine(mistake.correction, 52),
-    }))
+    const summaryText =
+        reviewItems.length === 0
+            ? 'No major coaching corrections were needed. Ava is still available if you want follow-up advice.'
+            : `${reviewItems.length} step${reviewItems.length === 1 ? '' : 's'} needed correction. Review the key fixes below, then retry if needed.`
     const activeIssue = reviewItems.length > 0 ? reviewItems[Math.min(currentIssueIndex, reviewItems.length - 1)] : null
 
     const handlePrimary = useCallback(() => {
@@ -209,13 +220,7 @@ export function TrainingReviewPanel3D(props) {
                     <meshStandardMaterial ref={glassMaterial} color="#09131b" transparent opacity={0.92} roughness={0.98} metalness={0.01} />
                 </RoundedBox>
 
-                <RoundedBox args={[0.42, 0.11, 0.02]} radius={0.04} smoothness={4} position={[-0.34, 0.38, 0.03]}>
-                    <meshStandardMaterial ref={chipMaterial} color="#0f2b35" transparent opacity={0.8} />
-                </RoundedBox>
-
-                <Text position={[-0.34, 0.38, 0.05]} fontSize={0.055} anchorX="center" anchorY="middle" color="#f8fafc">
-                    Inhalo360
-                </Text>
+                <BrandChip3D position={[-0.2, 0.38, 0.03]} width={0.64} materialRef={chipMaterial} />
 
                 <Text
                     position={[0, 0.22, 0.05]}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
+import { BrandChip3D } from './BrandChip3D'
 
 const PANEL_WIDTH = 1.2
 const PANEL_HEIGHT = 0.8
@@ -171,19 +172,7 @@ export function TrainingStartPanel3D(props) {
                     />
                 </RoundedBox>
 
-                <RoundedBox args={[0.36, 0.11, 0.02]} radius={0.04} smoothness={4} position={[-0.3, 0.28, 0.03]}>
-                    <meshStandardMaterial ref={chipMaterial} color="#0f2b35" transparent opacity={0.82} />
-                </RoundedBox>
-
-                <Text
-                    position={[-0.3, 0.28, 0.05]}
-                    fontSize={0.055}
-                    anchorX="center"
-                    anchorY="middle"
-                    color="#f8fafc"
-                >
-                    Inhalo360
-                </Text>
+                <BrandChip3D position={[-0.18, 0.28, 0.03]} width={0.56} materialRef={chipMaterial} />
 
                 <Text
                     position={[0, 0.12, 0.05]}

@@ -1,43 +1,49 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useConvaiRuntime } from '../convai/useConvaiRuntime'
-import { TRAINING_STEPS, useTrainingStore } from '../store/useTrainingStore'
+import { getStepById, useTrainingStore } from '../store/useTrainingStore'
 
-function buildDynamicInfo({ currentStep, sessionPhase, isTrainingComplete }) {
-    const step = TRAINING_STEPS[currentStep]
-    const visibleStepText = step?.text ?? 'No active step'
+function buildDynamicInfo({ currentStepId, sessionPhase, stepProgress, liveHint, secondDoseChoice }) {
+    const step = getStepById(currentStepId)
 
     return {
         text: [
             'You are coaching a user through inhaler training.',
             `Session phase: ${sessionPhase}.`,
-            `Visible checklist step id: ${currentStep}.`,
-            `Visible checklist step text: ${visibleStepText}.`,
-            `Optional second dose step: ${step?.optional === true ? 'yes' : 'no'}.`,
-            `Training complete: ${isTrainingComplete ? 'yes' : 'no'}.`,
+            `Current step id: ${currentStepId ?? 'none'}.`,
+            `Current step instruction: ${step?.instruction ?? 'No active step'}.`,
+            `Current validator: ${step?.validatorType ?? 'none'}.`,
+            `Step progress: ${Math.round((stepProgress ?? 0) * 100)}%.`,
+            `Live training hint: ${liveHint ?? 'None'}.`,
+            `Second dose choice: ${secondDoseChoice == null ? 'undecided' : secondDoseChoice ? 'yes' : 'no'}.`,
         ].join(' '),
     }
 }
 
-function buildInitialNarrationMessage(step) {
+function buildCoachMessage(message, step) {
+    if (!message) {
+        return null
+    }
+
+    if (message.kind === 'completion') {
+        return 'The user completed the inhaler session. Congratulate them briefly, reinforce the key habits, and invite final questions.'
+    }
+
+    if (message.kind === 'feedback') {
+        return [
+            'The user needs corrective coaching on the current inhaler step.',
+            `Current step: ${step?.instruction ?? message.stepId}.`,
+            `Tell the user this correction in a calm pharmacist tone: "${message.prompt}".`,
+            'Keep it brief, specific, and action-oriented.',
+        ].join(' ')
+    }
+
     return [
-        'We are starting inhaler training.',
-        'First, give a short preparation instruction: "Pick up the inhaler."',
-        `Then guide the user through the current visible checklist step only. The current visible step is step ${step.id}: "${step.text}".`,
-        'Keep the instruction concise and spoken as a pharmacist coach.',
+        'The user is ready for the next inhaler training instruction.',
+        `Current step: ${step?.instruction ?? message.stepId}.`,
+        `Tell the user this instruction in a pharmacist coaching tone: "${message.prompt}".`,
+        'Keep it concise and focused on the immediate action only.',
     ].join(' ')
 }
-
-function buildStepNarrationMessage(step) {
-    return [
-        'The user has reached a new inhaler training step.',
-        `Speak only the instruction for the current visible checklist step. Current step: ${step.id}.`,
-        `Step text: "${step.text}".`,
-        'Keep it concise, coaching-focused, and relevant to the action the user should do now.',
-    ].join(' ')
-}
-
-const COMPLETION_MESSAGE =
-    'The user has completed the inhaler training checklist. Give a short completion message, then invite them to ask any final questions.'
 
 function formatConvaiError(error) {
     if (error instanceof Error && error.message) {
@@ -65,20 +71,20 @@ export function ConvaiTrainingOrchestrator() {
 
     const {
         sessionPhase,
-        currentStep,
-        isTrainingComplete,
-        lastSpokenStepKey,
+        currentStepId,
+        stepProgress,
+        liveHint,
+        secondDoseChoice,
+        pendingCoachMessage,
+        lastDeliveredCoachKey,
         markTrainingActive,
-        markStepNarrated,
+        acknowledgeCoachMessage,
         setSessionError,
         clearSessionError,
     } = useTrainingStore()
 
     const connectRequestedRef = useRef(false)
     const isBotReadyRef = useRef(false)
-
-    const currentStepData = TRAINING_STEPS[currentStep]
-    const currentStepKey = useMemo(() => `step-${currentStep}`, [currentStep])
 
     useEffect(() => {
         if (!client) {
@@ -148,52 +154,27 @@ export function ConvaiTrainingOrchestrator() {
     }, [clearSessionError, client, connect, enabled, isConfigured, markTrainingActive, sessionPhase, setSessionError, state?.isConnected])
 
     useEffect(() => {
-        if (sessionPhase !== 'active' || !enabled || !isConfigured || !currentStepData) {
+        if (!enabled || !isConfigured || !state?.isConnected || !(client?.isBotReady || isBotReadyRef.current)) {
             return
         }
 
-        if (!state?.isConnected || !(client?.isBotReady || isBotReadyRef.current)) {
-            return
-        }
-
-        updateDynamicInfo(buildDynamicInfo({ currentStep, sessionPhase, isTrainingComplete }))
-
-        if (lastSpokenStepKey === currentStepKey) {
-            return
-        }
-
-        if (state?.isSpeaking || state?.isThinking) {
-            interrupt()
-        }
-
-        if (currentStep === 0 && lastSpokenStepKey === null) {
-            sendUserTextMessage(buildInitialNarrationMessage(currentStepData))
-        } else {
-            sendUserTextMessage(buildStepNarrationMessage(currentStepData))
-        }
-
-        markStepNarrated(currentStepKey)
-    }, [
-        client,
-        currentStep,
-        currentStepData,
-        currentStepKey,
-        enabled,
-        interrupt,
-        isConfigured,
-        isTrainingComplete,
-        lastSpokenStepKey,
-        markStepNarrated,
-        sendUserTextMessage,
-        sessionPhase,
-        state?.isConnected,
-        state?.isSpeaking,
-        state?.isThinking,
-        updateDynamicInfo,
-    ])
+        updateDynamicInfo(
+            buildDynamicInfo({
+                currentStepId,
+                sessionPhase,
+                stepProgress,
+                liveHint,
+                secondDoseChoice,
+            }),
+        )
+    }, [client, currentStepId, enabled, isConfigured, liveHint, secondDoseChoice, sessionPhase, state?.isConnected, stepProgress, updateDynamicInfo])
 
     useEffect(() => {
-        if (sessionPhase !== 'completed' || !enabled || !isConfigured) {
+        if (!pendingCoachMessage) {
+            return
+        }
+
+        if (!enabled || !isConfigured) {
             return
         }
 
@@ -201,32 +182,37 @@ export function ConvaiTrainingOrchestrator() {
             return
         }
 
-        if (lastSpokenStepKey === 'completed') {
+        if (pendingCoachMessage.key === lastDeliveredCoachKey) {
+            acknowledgeCoachMessage(pendingCoachMessage.key)
             return
         }
 
-        updateDynamicInfo(buildDynamicInfo({ currentStep, sessionPhase, isTrainingComplete: true }))
+        const step = getStepById(pendingCoachMessage.stepId ?? currentStepId)
+        const coachMessage = buildCoachMessage(pendingCoachMessage, step)
+        if (!coachMessage) {
+            acknowledgeCoachMessage(pendingCoachMessage.key)
+            return
+        }
 
         if (state?.isSpeaking || state?.isThinking) {
             interrupt()
         }
 
-        sendUserTextMessage(COMPLETION_MESSAGE)
-        markStepNarrated('completed')
+        sendUserTextMessage(coachMessage)
+        acknowledgeCoachMessage(pendingCoachMessage.key)
     }, [
+        acknowledgeCoachMessage,
         client,
-        currentStep,
+        currentStepId,
         enabled,
         interrupt,
         isConfigured,
-        lastSpokenStepKey,
-        markStepNarrated,
+        lastDeliveredCoachKey,
+        pendingCoachMessage,
         sendUserTextMessage,
-        sessionPhase,
         state?.isConnected,
         state?.isSpeaking,
         state?.isThinking,
-        updateDynamicInfo,
     ])
 
     return null

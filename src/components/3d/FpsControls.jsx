@@ -52,6 +52,7 @@ function canOccupyPosition(position, collisionLayout) {
 
 export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer = true, collisionLayout = null }) {
   const { camera, gl } = useThree()
+  const cameraRef = useRef()
   const keys = useRef({})
   const yaw = useRef(0)
   const pitch = useRef(0)
@@ -64,6 +65,7 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
     const initialEuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')
     yaw.current = initialEuler.y
     pitch.current = initialEuler.x
+    cameraRef.current = camera
   }, [camera])
 
   useEffect(() => {
@@ -125,12 +127,13 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
   }, [canLockPointer, gl])
 
   useFrame((_state, delta) => {
-    if (!isLocked.current) {
+    if (!isLocked.current || !cameraRef.current) {
       return
     }
 
+    const activeCamera = cameraRef.current
     const forward = new THREE.Vector3()
-    camera.getWorldDirection(forward)
+    activeCamera.getWorldDirection(forward)
     forward.y = 0
     forward.normalize()
 
@@ -144,16 +147,16 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
 
     if (direction.lengthSq() > 0) {
       direction.normalize().multiplyScalar(moveSpeed * delta)
-      proposedPosition.current.copy(camera.position)
+      proposedPosition.current.copy(activeCamera.position)
       proposedPosition.current.x += direction.x
       if (canOccupyPosition(proposedPosition.current, collisionLayout)) {
-        camera.position.x = proposedPosition.current.x
+        activeCamera.position.setX(proposedPosition.current.x)
       }
 
-      proposedPosition.current.copy(camera.position)
+      proposedPosition.current.copy(activeCamera.position)
       proposedPosition.current.z += direction.z
       if (canOccupyPosition(proposedPosition.current, collisionLayout)) {
-        camera.position.z = proposedPosition.current.z
+        activeCamera.position.setZ(proposedPosition.current.z)
       }
     }
   })

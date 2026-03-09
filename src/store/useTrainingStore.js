@@ -1,54 +1,128 @@
 import { create } from 'zustand'
+import {
+    INITIAL_STEP_ID,
+    TRAINING_STEPS,
+    buildCoachFeedback,
+    buildCoachInstruction,
+    createStepRuntime,
+    evaluateTrainingStep,
+    getNextStepId,
+    getStepById,
+    getVisibleTrainingSteps,
+    isSessionRunning,
+    summarizeStepResult,
+} from '../training/engine'
 
-// All training steps for metered dose inhaler usage
-export const TRAINING_STEPS = [
-    { id: 0, text: 'Shake the inhaler well', action: 'shake' },
-    { id: 1, text: 'Remove the cap', action: 'removeCap' },
-    { id: 2, text: 'Hold the inhaler upright', action: 'click' },
-    { id: 3, text: 'Tilt your head back slightly', action: 'tilt' },
-    { id: 4, text: 'Breathe out slowly', action: 'click' },
-    { id: 5, text: 'Place mouthpiece in mouth and seal with lips', action: 'click' },
-    { id: 6, text: 'Breathe in slowly and press the inhaler', action: 'click' },
-    { id: 7, text: 'Hold breath for 10-20 seconds', action: 'click' },
-    { id: 8, text: 'Exhale and wait before second dose if needed', action: 'click' },
-    { id: 9, text: '(Optional) Shake again before second dose', action: 'click', optional: true },
-    { id: 10, text: 'Replace the mouthpiece cover', action: 'replaceCap' },
-]
+function buildCoachMessageKey(message) {
+    return `${message.kind}:${message.stepId ?? 'none'}:${Date.now()}`
+}
+
+function buildMistakeId() {
+    return `mistake:${Date.now()}:${Math.random().toString(36).slice(2, 9)}`
+}
+
+function getInteractivePhaseFromOutcome(outcomeStatus) {
+    if (outcomeStatus === 'validating') return 'validating'
+    if (outcomeStatus === 'branching') return 'branching'
+    return 'awaitingAction'
+}
 
 function getInitialState() {
+    const initialStep = getStepById(INITIAL_STEP_ID)
+
     return {
-        currentStep: 0,
+        currentStepId: INITIAL_STEP_ID,
         completedSteps: [],
+        stepResults: [],
+        currentStepRuntime: createStepRuntime(initialStep),
         isCapOff: false,
         isInhalerFocused: false,
         isClipboardFocused: false,
-        isShaking: false,
-        isTrainingComplete: false,
-        shakeDuration: 0.5,
-        shakeElapsed: 0,
-        lastAdvanceTs: 0,
-        shakeAmount: 0.02,
-        focusDistanceOffset: 0.5,
-        sessionPhase: 'idle',
         hasTrainingStarted: false,
         hasReviewOpen: false,
+        isTrainingComplete: false,
+        sessionPhase: 'idle',
+        secondDoseChoice: null,
         mistakes: [],
-        lastSpokenStepKey: null,
+        pendingCoachMessage: null,
+        lastDeliveredCoachKey: null,
         lastUserAction: null,
+        sessionError: null,
+        focusDistanceOffset: 0.5,
+        stepProgress: 0,
+        liveHint: initialStep?.mistakeHints?.primary ?? null,
+        inputMode: 'desktop',
         startedAt: null,
         completedAt: null,
-        sessionError: null,
+        lastInputFrame: {
+            deltaMs: 0,
+            inputMode: 'desktop',
+            shakeSpeed: 0,
+            uprightScore: 0,
+            headTilt: 0,
+            mouthDistance: 1,
+            inhaleActive: false,
+            breathOutActive: false,
+            holdBreathActive: false,
+            stabilityScore: 1,
+            inhalerPosition: null,
+            mouthTargetPosition: null,
+            isXR: false,
+        },
+        lastStepCompletion: null,
     }
 }
 
-function buildMistakeId(code, stepId) {
-    return `${code}:${stepId ?? 'none'}`
+function createQueuedCoachMessage(message) {
+    return {
+        ...message,
+        key: buildCoachMessageKey(message),
+        createdAt: Date.now(),
+    }
 }
 
-export const useTrainingStore = create((set, get) => ({
-    ...getInitialState(),
+export const useTrainingStore = create((set, get) => {
+    const queueCoachMessage = (message, sessionPhase = 'coaching') => {
+        set({
+            pendingCoachMessage: createQueuedCoachMessage(message),
+            sessionPhase,
+        })
+    }
 
-    completeTraining: () =>
+    const recordMistake = ({ stepId = null, code, message, correction, metrics = null }) => {
+        set((state) => ({
+            mistakes: [
+                ...state.mistakes,
+                {
+                    id: buildMistakeId(),
+                    stepId,
+                    code,
+                    message,
+                    correction,
+                    metrics,
+                    timestamp: Date.now(),
+                },
+            ],
+        }))
+    }
+
+    const moveToStep = (nextStepId, secondDoseChoice = get().secondDoseChoice) => {
+        const nextStep = getStepById(nextStepId)
+        if (!nextStep) {
+            return
+        }
+
+        set({
+            currentStepId: nextStepId,
+            currentStepRuntime: createStepRuntime(nextStep),
+            stepProgress: 0,
+            liveHint: nextStep.mistakeHints?.primary ?? null,
+            secondDoseChoice,
+        })
+        queueCoachMessage(buildCoachInstruction(nextStep), 'coaching')
+    }
+
+    const completeTraining = () => {
         set({
             sessionPhase: 'completed',
             hasReviewOpen: true,
@@ -56,155 +130,277 @@ export const useTrainingStore = create((set, get) => ({
             completedAt: Date.now(),
             isInhalerFocused: false,
             isClipboardFocused: false,
-            isShaking: false,
-            shakeElapsed: 0,
-        }),
+            stepProgress: 1,
+            liveHint: 'Training complete. Review the session or ask Ava a follow-up question.',
+            pendingCoachMessage: createQueuedCoachMessage({
+                kind: 'completion',
+                prompt:
+                    'Congratulate the user for completing the inhaler session, briefly reinforce the key habits, and invite follow-up questions.',
+            }),
+        })
+    }
 
-    completeStep: (stepId) => {
-        const { currentStep, completedSteps, sessionPhase } = get()
-        if (sessionPhase !== 'active') return
-        if (stepId !== currentStep) return
+    const completeCurrentStep = (branchChoice = null) => {
+        const state = get()
+        const step = getStepById(state.currentStepId)
+        if (!step) return
 
-        const newCompleted = [...completedSteps, stepId]
-        const nextStep = currentStep + 1
-        const isComplete = nextStep >= TRAINING_STEPS.length
+        const resolvedSecondDoseChoice = step.id === 'second_dose_decision' ? branchChoice : state.secondDoseChoice
+        const nextStepId = getNextStepId(step.id, resolvedSecondDoseChoice)
+        const nextCompletedSteps = [...state.completedSteps, step.id]
+        const nextStepResults = [
+            ...state.stepResults,
+            {
+                ...summarizeStepResult(step, state.currentStepRuntime),
+                completedAt: Date.now(),
+            },
+        ]
 
-        if (isComplete) {
-            set({
-                completedSteps: newCompleted,
+        set({
+            completedSteps: nextCompletedSteps,
+            stepResults: nextStepResults,
+            secondDoseChoice: resolvedSecondDoseChoice,
+            lastStepCompletion: {
+                stepId: step.id,
+                nextStepId,
+                completedAt: Date.now(),
+            },
+        })
+
+        if (!nextStepId) {
+            completeTraining()
+            return
+        }
+
+        moveToStep(nextStepId, resolvedSecondDoseChoice)
+    }
+
+    const applyOutcome = (outcome, sourceAction = null) => {
+        const state = get()
+        const currentStep = getStepById(state.currentStepId)
+        if (!currentStep) return
+
+        const nextPatch = {
+            currentStepRuntime: outcome.runtime,
+            stepProgress: outcome.progress,
+            liveHint: outcome.liveHint ?? currentStep.mistakeHints?.primary ?? null,
+        }
+
+        if (outcome.status === 'success') {
+            set(nextPatch)
+            completeCurrentStep(outcome.branchChoice)
+            return
+        }
+
+        if (outcome.feedback) {
+            recordMistake({
+                stepId: currentStep.id,
+                code: outcome.feedback.code,
+                message: outcome.feedback.message,
+                correction: outcome.feedback.correction,
+                metrics: state.lastInputFrame,
             })
-            get().completeTraining()
+            set(nextPatch)
+            queueCoachMessage(buildCoachFeedback(currentStep, outcome.feedback), 'feedback')
             return
         }
 
+        const nextSessionPhase = getInteractivePhaseFromOutcome(outcome.status)
         set({
-            completedSteps: newCompleted,
-            currentStep: nextStep,
-            isTrainingComplete: false,
+            ...nextPatch,
+            sessionPhase: nextSessionPhase,
+            lastUserAction: sourceAction?.type ?? state.lastUserAction,
         })
-    },
+    }
 
-    setCapOff: (value) => {
-        const { currentStep, sessionPhase } = get()
-        if (sessionPhase !== 'active') return
+    return {
+        ...getInitialState(),
 
-        set({ isCapOff: value })
-        if (value && currentStep === 1) {
-            get().completeStep(1)
-        }
-        if (!value && currentStep === 10) {
-            get().completeStep(10)
-        }
-    },
+        startTraining: () =>
+            set((state) => ({
+                ...getInitialState(),
+                hasTrainingStarted: true,
+                sessionPhase: 'starting',
+                startedAt: Date.now(),
+                focusDistanceOffset: state.focusDistanceOffset,
+            })),
 
-    setInhalerFocused: (value) => {
-        const { sessionPhase } = get()
-        if (value && sessionPhase !== 'active') return
-        set({ isInhalerFocused: value })
-    },
+        markTrainingActive: () => {
+            const { sessionPhase } = get()
+            if (sessionPhase !== 'starting') return
 
-    setClipboardFocused: (value) => {
-        const { sessionPhase } = get()
-        if (value && sessionPhase !== 'active') return
-        set({ isClipboardFocused: value })
-    },
+            const initialStep = getStepById(INITIAL_STEP_ID)
+            set({
+                sessionPhase: 'coaching',
+                sessionError: null,
+                currentStepId: INITIAL_STEP_ID,
+                currentStepRuntime: createStepRuntime(initialStep),
+                stepProgress: 0,
+                liveHint: initialStep?.mistakeHints?.primary ?? null,
+            })
+            queueCoachMessage(buildCoachInstruction(initialStep), 'coaching')
+        },
 
-    setIsShaking: (value) => set({ isShaking: value }),
-    setShakeElapsed: (value) => set({ shakeElapsed: value }),
-    setSessionError: (message) => set({ sessionError: message }),
-    clearSessionError: () => set({ sessionError: null }),
-    setLastUserAction: (value) => set({ lastUserAction: value }),
+        acknowledgeCoachMessage: (messageKey) => {
+            const { pendingCoachMessage, currentStepId, currentStepRuntime, sessionPhase } = get()
+            if (!pendingCoachMessage || pendingCoachMessage.key !== messageKey) {
+                return
+            }
 
-    recordMistake: ({ stepId = null, code, message, correction }) => {
-        const { mistakes } = get()
-        const id = buildMistakeId(code, stepId)
-        if (mistakes.some((mistake) => mistake.id === id)) {
-            return
-        }
+            const currentStep = getStepById(currentStepId)
+            const nextPhase =
+                sessionPhase === 'completed'
+                    ? 'completed'
+                    : currentStep?.validatorType === 'branchChoice' && currentStepRuntime.progress >= 1
+                        ? 'branching'
+                        : 'awaitingAction'
 
-        set({
-            mistakes: [
-                ...mistakes,
-                {
-                    id,
-                    stepId,
-                    code,
-                    message,
-                    correction,
-                    timestamp: Date.now(),
-                },
-            ],
-        })
-    },
+            set({
+                pendingCoachMessage: null,
+                lastDeliveredCoachKey: messageKey,
+                sessionPhase: nextPhase,
+            })
+        },
 
-    clearMistakes: () => set({ mistakes: [] }),
+        setSessionError: (message) => set({ sessionError: message }),
+        clearSessionError: () => set({ sessionError: null }),
+        setLastUserAction: (value) => set({ lastUserAction: value }),
 
-    completeShake: () => {
-        const { currentStep, sessionPhase } = get()
-        if (sessionPhase !== 'active') return
+        recordMistake,
 
-        set({ isShaking: false, shakeElapsed: 0 })
-        if (currentStep === 0) {
-            get().completeStep(0)
-        } else if (currentStep === 9) {
-            get().completeStep(9)
-        }
-    },
+        setCapOff: (value) => set({ isCapOff: value }),
 
-    advanceStep: () => {
-        const now = performance.now()
-        const { currentStep, lastAdvanceTs, sessionPhase } = get()
-        if (sessionPhase !== 'active') return
-        if (now - lastAdvanceTs < 150) return
+        setInhalerFocused: (value) => {
+            const { sessionPhase } = get()
+            if (value && !isSessionRunning(sessionPhase)) return
+            set({ isInhalerFocused: value })
+        },
 
-        const step = TRAINING_STEPS[currentStep]
-        if (step && step.action === 'click') {
-            set({ lastAdvanceTs: now })
-            get().completeStep(currentStep)
-        }
-    },
+        setClipboardFocused: (value) => {
+            const { sessionPhase } = get()
+            if (value && !isSessionRunning(sessionPhase)) return
+            set({ isClipboardFocused: value })
+        },
 
-    markTrainingActive: () => {
-        const { sessionPhase } = get()
-        if (sessionPhase !== 'starting') return
-        set({ sessionPhase: 'active', sessionError: null })
-    },
+        setInputMode: (mode) => set({ inputMode: mode }),
 
-    markStepNarrated: (stepKey) => set({ lastSpokenStepKey: stepKey }),
+        syncTrainingInput: (frame) => {
+            const state = get()
+            const nextInputFrame = {
+                ...state.lastInputFrame,
+                ...frame,
+            }
 
-    closeReview: () => set({ hasReviewOpen: false }),
+            if (state.inputMode !== nextInputFrame.inputMode || state.lastInputFrame !== nextInputFrame) {
+                set({
+                    lastInputFrame: nextInputFrame,
+                    inputMode: nextInputFrame.inputMode ?? state.inputMode,
+                })
+            }
 
-    startTraining: () =>
-        set((state) => ({
-            ...getInitialState(),
-            sessionPhase: 'starting',
-            hasTrainingStarted: true,
-            startedAt: Date.now(),
-            completedAt: null,
-            sessionError: null,
-            mistakes: [],
-            lastSpokenStepKey: null,
-            lastUserAction: null,
-            shakeDuration: state.shakeDuration,
-            shakeAmount: state.shakeAmount,
-            focusDistanceOffset: state.focusDistanceOffset,
-        })),
+            if (!isSessionRunning(state.sessionPhase)) {
+                return
+            }
 
-    resetShake: () => set({ isShaking: false, shakeElapsed: 0 }),
+            const currentStep = getStepById(state.currentStepId)
+            if (!currentStep) {
+                return
+            }
 
-    resetTraining: () =>
-        set((state) => ({
-            ...getInitialState(),
-            shakeDuration: state.shakeDuration,
-            shakeAmount: state.shakeAmount,
-            focusDistanceOffset: state.focusDistanceOffset,
-        })),
+            const outcome = evaluateTrainingStep({
+                step: currentStep,
+                runtime: state.currentStepRuntime,
+                frame: nextInputFrame,
+                action: null,
+            })
 
-    resetTrainingSession: () =>
-        set((state) => ({
-            ...getInitialState(),
-            shakeDuration: state.shakeDuration,
-            shakeAmount: state.shakeAmount,
-            focusDistanceOffset: state.focusDistanceOffset,
-        })),
-}))
+            applyOutcome(outcome)
+        },
+
+        dispatchTrainingAction: (action) => {
+            const now = Date.now()
+            const normalizedAction = {
+                timestamp: now,
+                ...action,
+            }
+
+            const state = get()
+            const currentStep = getStepById(state.currentStepId)
+            const isRunning = isSessionRunning(state.sessionPhase)
+
+            if (!isRunning || !currentStep) {
+                recordMistake({
+                    stepId: state.currentStepId,
+                    code: 'attempt_action_before_start',
+                    message: 'The inhaler training interaction was used before the guided session was ready.',
+                    correction: 'Press Start Training first and wait for Ava to begin the session.',
+                })
+                return
+            }
+
+            if (normalizedAction.type === 'remove-cap') {
+                set({ isCapOff: true, lastUserAction: normalizedAction.type })
+            } else if (normalizedAction.type === 'replace-cap') {
+                set({ isCapOff: false, lastUserAction: normalizedAction.type })
+            } else {
+                set({ lastUserAction: normalizedAction.type })
+            }
+
+            const relevantActionTypes = {
+                capState: ['remove-cap', 'replace-cap'],
+                inhalePress: ['press-canister'],
+                branchChoice: ['branch-choice'],
+            }
+
+            const allowedActions = relevantActionTypes[currentStep.validatorType] ?? []
+            if (allowedActions.length > 0 && !allowedActions.includes(normalizedAction.type)) {
+                recordMistake({
+                    stepId: currentStep.id,
+                    code: 'wrong_action_for_step',
+                    message: `The action "${normalizedAction.type}" did not match the current step "${currentStep.instruction}".`,
+                    correction: currentStep.mistakeHints?.primary ?? 'Return to the current step and complete it correctly.',
+                    metrics: state.lastInputFrame,
+                })
+                return
+            }
+
+            if (allowedActions.length === 0 && ['press-canister', 'remove-cap', 'replace-cap'].includes(normalizedAction.type)) {
+                recordMistake({
+                    stepId: currentStep.id,
+                    code: 'premature_action',
+                    message: `The action "${normalizedAction.type}" happened too early for the current step "${currentStep.instruction}".`,
+                    correction: currentStep.mistakeHints?.primary ?? 'Complete the current step first.',
+                    metrics: state.lastInputFrame,
+                })
+                return
+            }
+
+            const outcome = evaluateTrainingStep({
+                step: currentStep,
+                runtime: state.currentStepRuntime,
+                frame: state.lastInputFrame,
+                action: normalizedAction,
+            })
+
+            applyOutcome(outcome, normalizedAction)
+        },
+
+        closeReview: () => set({ hasReviewOpen: false }),
+
+        resetTrainingSession: () =>
+            set((state) => ({
+                ...getInitialState(),
+                focusDistanceOffset: state.focusDistanceOffset,
+            })),
+
+        resetTraining: () =>
+            set((state) => ({
+                ...getInitialState(),
+                focusDistanceOffset: state.focusDistanceOffset,
+            })),
+
+        getVisibleSteps: () => getVisibleTrainingSteps(get().secondDoseChoice),
+    }
+})
+
+export { TRAINING_STEPS, getStepById, getVisibleTrainingSteps }

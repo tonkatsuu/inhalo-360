@@ -2,55 +2,46 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { useTrainingStore, TRAINING_STEPS } from '../../store/useTrainingStore'
+import { getVisibleTrainingSteps, useTrainingStore } from '../../store/useTrainingStore'
+import { isSessionRunning } from '../../training/engine'
 import { isFromOverlayElement } from '../../utils/dom'
 
 const MOVE_SPEED = 30
 const ROTATE_SPEED = 40
 
-function ChecklistItem({ step, isCompleted, isCurrent }) { 
-    // div element for checklist items
+function ChecklistItem({ step, isCompleted, isCurrent }) {
     return (
         <div
             style={{
                 display: 'flex',
                 alignItems: 'flex-start',
-                justifyItems: 'center',
                 gap: '8px',
                 padding: '4px 0',
-                opacity: isCompleted ? 0.6 : 1,
+                opacity: isCompleted ? 0.55 : 1,
             }}
         >
             <div
                 style={{
                     width: '15px',
                     height: '15px',
-                    borderRadius: '3px',
+                    borderRadius: '999px',
                     border: '2px solid',
-                    borderColor: isCompleted ? '#4ade80' : isCurrent ? '#fbbf24' : '#666',
-                    backgroundColor: isCompleted ? '#4ade80' : 'transparent',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    borderColor: isCompleted ? '#4ade80' : isCurrent ? '#67cdec' : '#666',
+                    backgroundColor: isCompleted ? '#4ade80' : isCurrent ? 'rgba(103, 205, 236, 0.18)' : 'transparent',
                     flexShrink: 0,
-                    marginTop: '1px',
+                    marginTop: '2px',
                 }}
-            >
-                {isCompleted && (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                )}
-            </div>
+            />
             <span
                 style={{
                     fontSize: '12px',
-                    color: isCurrent ? '#9f008c' : '#111',
+                    color: isCurrent ? '#0b3041' : '#111',
                     textDecoration: isCompleted ? 'line-through' : 'none',
-                    lineHeight: '1.2',
+                    lineHeight: '1.25',
+                    fontWeight: isCurrent ? 700 : 500,
                 }}
             >
-                {step.text}
+                {step.instruction}
             </span>
         </div>
     )
@@ -69,10 +60,19 @@ export function Clipboard(props) {
     const upVector = useMemo(() => new THREE.Vector3(0, 1, 0), [])
     const original = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: new THREE.Vector3() })
 
-    const { currentStep, completedSteps, isClipboardFocused, setClipboardFocused, focusDistanceOffset, isTrainingComplete } =
-        useTrainingStore()
-    const sessionPhase = useTrainingStore((state) => state.sessionPhase)
-    const recordMistake = useTrainingStore((state) => state.recordMistake)
+    const {
+        completedSteps,
+        currentStepId,
+        isClipboardFocused,
+        isTrainingComplete,
+        secondDoseChoice,
+        setClipboardFocused,
+        focusDistanceOffset,
+        sessionPhase,
+        recordMistake,
+    } = useTrainingStore()
+
+    const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
 
     useEffect(() => {
         if (!group.current) return
@@ -85,19 +85,19 @@ export function Clipboard(props) {
         const handleGlobalDrop = (event) => {
             if (isFromOverlayElement(event.target)) return
             if (!isClipboardFocused) return
-            if (sessionPhase !== 'active') return
+            if (!isSessionRunning(sessionPhase)) return
             event.preventDefault()
             setClipboardFocused(false)
         }
 
         const handleGlobalPointerDown = (event) => {
             if (isFromOverlayElement(event.target)) return
-            if (event.button === 0 && sessionPhase !== 'active' && isHovering) {
+            if (event.button === 0 && !isSessionRunning(sessionPhase) && isHovering) {
                 recordMistake({
-                    stepId: currentStep,
+                    stepId: currentStepId,
                     code: 'attempt_action_before_start',
                     message: 'The checklist was opened before the training session was started.',
-                    correction: 'Press Start Training first, then follow the guided checklist from the beginning.',
+                    correction: 'Press Start Training first, then follow the guided checklist.',
                 })
                 return
             }
@@ -108,7 +108,7 @@ export function Clipboard(props) {
                 }
                 return
             }
-            if (event.button === 0 && !isClipboardFocused && isHovering) {
+            if (event.button === 0 && !isClipboardFocused && isHovering && isSessionRunning(sessionPhase)) {
                 event.preventDefault()
                 setClipboardFocused(true)
             }
@@ -120,7 +120,7 @@ export function Clipboard(props) {
             window.removeEventListener('contextmenu', handleGlobalDrop)
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
         }
-    }, [currentStep, isClipboardFocused, isHovering, recordMistake, sessionPhase, setClipboardFocused])
+    }, [currentStepId, isClipboardFocused, isHovering, recordMistake, sessionPhase, setClipboardFocused])
 
     useFrame((_state, delta) => {
         if (!group.current) return
@@ -159,12 +159,12 @@ export function Clipboard(props) {
     })
 
     const handleFocus = () => {
-        if (sessionPhase !== 'active') {
+        if (!isSessionRunning(sessionPhase)) {
             recordMistake({
-                stepId: currentStep,
+                stepId: currentStepId,
                 code: 'attempt_action_before_start',
                 message: 'The checklist was opened before the training session was started.',
-                correction: 'Press Start Training first, then follow the guided checklist from the beginning.',
+                correction: 'Press Start Training first, then follow the guided checklist.',
             })
             return
         }
@@ -204,34 +204,37 @@ export function Clipboard(props) {
                                 color: '#000000',
                                 padding: '5px',
                                 fontSize: 13,
-                                width: 280,
+                                width: 290,
                                 height: 380,
                                 lineHeight: 1.45,
                                 pointerEvents: 'none',
                             }}
                         >
-                            <div style={{ fontWeight: 'bold', marginBottom: 10 }}>Inhaler Usage Steps</div>
-                            {TRAINING_STEPS.map((step) => (
-                                <ChecklistItem style={{ pointerEvents: 'none', fontSize: 12 }}
+                            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Ava&apos;s checklist</div>
+                            <div style={{ fontSize: 12, marginBottom: 8, color: '#34515b' }}>
+                                Follow the current instruction card, then use this sheet to review the full flow.
+                            </div>
+                            {visibleSteps.map((step) => (
+                                <ChecklistItem
                                     key={step.id}
                                     step={step}
                                     isCompleted={completedSteps.includes(step.id)}
-                                    isCurrent={currentStep === step.id}
+                                    isCurrent={currentStepId === step.id}
                                 />
                             ))}
                             {isTrainingComplete && (
                                 <div
                                     style={{
                                         marginTop: '10px',
-                                        padding: '6px',
+                                        padding: '8px',
                                         background: '#d1fae5',
                                         color: '#065f46',
-                                        borderRadius: '6px',
+                                        borderRadius: '8px',
                                         textAlign: 'center',
                                         fontWeight: 'bold',
                                     }}
                                 >
-                                    ✓ Training Complete!
+                                    Session complete
                                 </div>
                             )}
                         </div>

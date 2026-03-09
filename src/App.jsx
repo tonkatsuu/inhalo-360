@@ -9,11 +9,14 @@ import { ConvaiAvatar } from './components/3d/ConvaiAvatar'
 import { FpsControls } from './components/3d/FpsControls'
 import { TrainingStartPanel3D } from './components/3d/TrainingStartPanel3D'
 import { TrainingReviewPanel3D } from './components/3d/TrainingReviewPanel3D'
+import { TrainingBranchPanel3D } from './components/3d/TrainingBranchPanel3D'
+import { TrainingGuides3D } from './components/3d/TrainingGuides3D'
 import { ConvaiProvider } from './convai/ConvaiContext'
 import { ConvaiTrainingOrchestrator } from './components/ConvaiTrainingOrchestrator'
 import { TrainingHUD } from './components/TrainingHUD'
 import { ConvaiRuntime } from './components/ConvaiRuntime'
 import { TrainingStepFeedback } from './components/TrainingStepFeedback'
+import { BrandBadge } from './components/BrandBadge'
 import { readConvaiConfig } from './convai/config'
 
 const store = createXRStore()
@@ -47,6 +50,10 @@ export default function App() {
                     Enter VR Training
                 </button>
 
+                <div style={{ position: 'absolute', top: 22, left: 22, zIndex: 10 }}>
+                    <BrandBadge subtitle="Immersive coaching" />
+                </div>
+
                 <TrainingHUD />
 
                 <Canvas camera={{ position: [-2.35, 1.6, 1.15], rotation: [-0.06, 0, 0], fov: 75 }}>
@@ -76,7 +83,9 @@ export default function App() {
                             <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
                         </ClinicRoom>
                         <TrainingStartPanel3D position={[-2.35, 1.7, -0.32]} />
+                        <TrainingBranchPanel3D position={[-2.35, 1.62, -0.25]} />
                         <TrainingReviewPanel3D position={[-2.35, 1.78, -0.42]} />
+                        <TrainingGuides3D />
                         <FpsControls canLockPointer collisionLayout={collisionLayout} />
                     </XR>
                 </Canvas>
