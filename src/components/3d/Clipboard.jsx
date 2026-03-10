@@ -58,7 +58,7 @@ export function Clipboard(props) {
     const focusTarget = useMemo(() => new THREE.Vector3(), [])
     const targetQuat = useMemo(() => new THREE.Quaternion(), [])
     const upVector = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-    const original = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: new THREE.Vector3() })
+    const original = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: new THREE.Vector3(), captured: false })
 
     const {
         completedSteps,
@@ -75,11 +75,10 @@ export function Clipboard(props) {
     const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
 
     useEffect(() => {
-        if (!group.current) return
-        original.current.pos.copy(group.current.position)
-        original.current.quat.copy(group.current.quaternion)
-        original.current.scale.copy(group.current.scale)
-    }, [])
+        // Reset the captured flag when props change so the resting position
+        // is re-snapshotted on the next frame (props.position may have changed).
+        original.current.captured = false
+    }, [props.position, props.rotation, props.scale])
 
     useEffect(() => {
         const handleGlobalDrop = (event) => {
@@ -124,6 +123,15 @@ export function Clipboard(props) {
 
     useFrame((_state, delta) => {
         if (!group.current) return
+
+        // Capture the true resting transform on the first frame after mount / prop change,
+        // because useEffect([]) fires before R3F has propagated position/rotation/scale props.
+        if (!original.current.captured) {
+            original.current.pos.copy(group.current.position)
+            original.current.quat.copy(group.current.quaternion)
+            original.current.scale.copy(group.current.scale)
+            original.current.captured = true
+        }
 
         const alphaMove = 1 - Math.exp(-MOVE_SPEED * delta)
         const alphaRotate = 1 - Math.exp(-ROTATE_SPEED * delta)

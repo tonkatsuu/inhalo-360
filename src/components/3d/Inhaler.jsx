@@ -36,6 +36,7 @@ export function Inhaler(props) {
         pos: new THREE.Vector3(),
         quat: new THREE.Quaternion(),
         scale: new THREE.Vector3(),
+        captured: false,
     })
     const desktopInputs = useRef({
         inhaleActive: false,
@@ -141,12 +142,10 @@ export function Inhaler(props) {
     })
 
     useEffect(() => {
-        if (!group.current) return
-        original.current.pos.copy(group.current.position)
-        original.current.quat.copy(group.current.quaternion)
-        original.current.scale.copy(group.current.scale)
-        lastPos.current.copy(group.current.position)
-    }, [])
+        // Reset the captured flag when props change so the resting position
+        // is re-snapshotted on the next frame (props.position may have changed).
+        original.current.captured = false
+    }, [props.position, props.rotation, props.scale])
 
     useEffect(() => {
         if (!group.current) return
@@ -296,6 +295,16 @@ export function Inhaler(props) {
 
     useFrame((_state, delta) => {
         if (!group.current) return
+
+        // Capture the true resting transform on the first frame after mount / prop change,
+        // because useEffect([]) fires before R3F has propagated position/rotation/scale props.
+        if (!original.current.captured) {
+            original.current.pos.copy(group.current.position)
+            original.current.quat.copy(group.current.quaternion)
+            original.current.scale.copy(group.current.scale)
+            lastPos.current.copy(group.current.position)
+            original.current.captured = true
+        }
 
         const alphaMove = 1 - Math.exp(-MOVE_SPEED * delta)
         const alphaRotate = 1 - Math.exp(-ROTATE_SPEED * delta)
