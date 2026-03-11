@@ -32,17 +32,13 @@ export function Inhaler(props) {
     const lastPos = useRef(new THREE.Vector3())
     const [isHovering, setIsHovering] = useState(false)
     const materialState = useRef(new Map())
+    const isPointerDown = useRef(false)
+    const hasAutoPressed = useRef(false)
     const original = useRef({
         pos: new THREE.Vector3(),
         quat: new THREE.Quaternion(),
         scale: new THREE.Vector3(),
         captured: false,
-    })
-    const desktopInputs = useRef({
-        inhaleActive: false,
-        breathOutActive: false,
-        holdBreathActive: false,
-        mouthPoseActive: false,
     })
     const desktopMotionRef = useRef({
         shakeSpeed: 0,
@@ -80,6 +76,7 @@ export function Inhaler(props) {
 
     const {
         currentStepId,
+        currentStepRuntime,
         isCapOff,
         isInhalerFocused,
         focusDistanceOffset,
@@ -176,6 +173,11 @@ export function Inhaler(props) {
 
         const handleGlobalPointerDown = (event) => {
             if (isFromOverlayElement(event.target)) return
+            
+            if (event.button === 0) {
+                isPointerDown.current = true
+            }
+
             if (event.button === 0 && !isInhalerFocused && isHovering) {
                 if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') {
                     recordBeforeStartMistake()
@@ -200,57 +202,29 @@ export function Inhaler(props) {
                     return
                 }
 
-                attemptPrimaryAction()
+                // Only trigger discrete actions on click. Breathing is state-driven in useFrame.
+                if (currentStep?.validatorType === 'capState' || (currentStep?.validatorType === 'inhalePress' && xrMode === 'immersive-vr')) {
+                    attemptPrimaryAction()
+                }
+            }
+        }
+
+        const handleGlobalPointerUp = (event) => {
+            if (event.button === 0) {
+                isPointerDown.current = false
+                hasAutoPressed.current = false
             }
         }
 
         window.addEventListener('contextmenu', handleGlobalDrop)
         window.addEventListener('pointerdown', handleGlobalPointerDown)
+        window.addEventListener('pointerup', handleGlobalPointerUp)
         return () => {
             window.removeEventListener('contextmenu', handleGlobalDrop)
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
+            window.removeEventListener('pointerup', handleGlobalPointerUp)
         }
-    }, [attemptPrimaryAction, isHovering, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setInhalerFocused])
-
-    useEffect(() => {
-        const handleKeyChange = (event, value) => {
-            if (isFromOverlayElement(event.target)) return
-
-            if (event.code === 'KeyI') {
-                desktopInputs.current.inhaleActive = value
-            }
-            if (event.code === 'KeyE') {
-                desktopInputs.current.breathOutActive = value
-            }
-            if (event.code === 'Space' || event.code === 'KeyH') {
-                desktopInputs.current.holdBreathActive = value
-            }
-            if (event.code === 'KeyM') {
-                desktopInputs.current.mouthPoseActive = value
-            }
-
-            if (!value) {
-                return
-            }
-
-            if (event.code === 'KeyY') {
-                dispatchTrainingAction({ type: 'branch-choice', choice: true })
-            }
-            if (event.code === 'KeyN') {
-                dispatchTrainingAction({ type: 'branch-choice', choice: false })
-            }
-        }
-
-        const handleKeyDown = (event) => handleKeyChange(event, true)
-        const handleKeyUp = (event) => handleKeyChange(event, false)
-
-        window.addEventListener('keydown', handleKeyDown)
-        window.addEventListener('keyup', handleKeyUp)
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown)
-            window.removeEventListener('keyup', handleKeyUp)
-        }
-    }, [dispatchTrainingAction])
+    }, [attemptPrimaryAction, currentStep?.validatorType, isHovering, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setInhalerFocused, xrMode])
 
     useEffect(() => {
         const handleMouseMove = (event) => {
@@ -309,6 +283,7 @@ export function Inhaler(props) {
         const alphaMove = 1 - Math.exp(-MOVE_SPEED * delta)
         const alphaRotate = 1 - Math.exp(-ROTATE_SPEED * delta)
         const usingXRController = Boolean(isXRInput && isInhalerFocused)
+        const desktopPointerDown = isPointerDown.current && !usingXRController && isInhalerFocused
 
         camera.getWorldDirection(camForward)
         camera.getWorldDirection(forward)
@@ -332,7 +307,7 @@ export function Inhaler(props) {
             } else {
                 const mouthPoseActive =
                     ['mouthSeal', 'inhalePress'].includes(currentStep?.validatorType) &&
-                    (desktopInputs.current.mouthPoseActive || desktopInputs.current.inhaleActive)
+                    desktopPointerDown
                 if (mouthPoseActive) {
                     focusTarget
                         .copy(camera.position)
@@ -369,12 +344,23 @@ export function Inhaler(props) {
         const thumbstickState = activeController?.gamepad?.['xr-standard-thumbstick']
         const aButtonState = activeController?.gamepad?.['a-button']
         const bButtonState = activeController?.gamepad?.['b-button']
-        const inhaleActive = desktopInputs.current.inhaleActive || (thumbstickState?.yAxis ?? 0) < -0.25
+
+        // Context-aware desktop button mapping
+        const inhaleActive = (desktopPointerDown && currentStep?.validatorType === 'inhalePress') || (thumbstickState?.yAxis ?? 0) < -0.25
         const breathOutActive =
-            desktopInputs.current.breathOutActive ||
+            (desktopPointerDown && (currentStep?.validatorType === 'breathOut' || currentStep?.validatorType === 'branchChoice')) ||
             (thumbstickState?.yAxis ?? 0) > 0.25 ||
             aButtonState?.state === 'pressed'
-        const holdBreathActive = desktopInputs.current.holdBreathActive || bButtonState?.state === 'pressed'
+        const holdBreathActive = (desktopPointerDown && currentStep?.validatorType === 'holdBreath') || bButtonState?.state === 'pressed'
+        
+        // Auto-press mechanism for desktop inhalation timing
+        if (desktopPointerDown && currentStep?.validatorType === 'inhalePress' && !hasAutoPressed.current) {
+            if ((currentStepRuntime?.inhaleLeadMs ?? 0) >= 500) {
+                attemptPrimaryAction()
+                hasAutoPressed.current = true
+            }
+        }
+
         const stabilityScore = 1 - Math.min(1, speed / STABILITY_SPEED_MAX)
         const shakeSpeed = Math.max(speed, desktopMotionRef.current.shakeSpeed)
 
@@ -427,8 +413,6 @@ export function Inhaler(props) {
             setInhalerFocused(true)
             return
         }
-
-        attemptPrimaryAction()
     }
 
     return (

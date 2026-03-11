@@ -47,6 +47,7 @@ const videoStyle = {
 export function VideoPanel3D({ ...props }) {
     const { state } = useConvaiRuntime()
     const currentStepId = useTrainingStore((s) => s.currentStepId)
+    const sessionPhase = useTrainingStore((s) => s.sessionPhase)
     const secondDoseChoice = useTrainingStore((s) => s.secondDoseChoice)
     const isClipboardFocused = useTrainingStore((s) => s.isClipboardFocused)
     const camera = useThree((s) => s.camera)
@@ -62,7 +63,8 @@ export function VideoPanel3D({ ...props }) {
 
     const isConnected = state?.isConnected === true
     const currentVideoFile = STEP_VIDEO_FILES[currentStepId]
-    const isVisible = isConnected && !!currentVideoFile && !isClipboardFocused
+    const isBranching = sessionPhase === 'branching' && currentStepId === 'second_dose_decision'
+    const isVisible = isConnected && !!currentVideoFile && !isClipboardFocused && !isBranching
     const isRendered = isMounted || isVisible
     const stepNumber = getStepIndex(currentStepId, secondDoseChoice) + 1
 

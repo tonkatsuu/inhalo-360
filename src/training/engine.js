@@ -633,6 +633,24 @@ function evaluateHoldBreath(step, runtime, frame) {
 }
 
 function evaluateBranchChoice(step, runtime, frame, action) {
+    if (runtime.progress >= 1) {
+        const nextRuntime = { ...runtime }
+
+        if (!action || action.type !== 'branch-choice') {
+            return buildOutcome(nextRuntime, {
+                status: 'branching',
+                liveHint: 'Choose whether a second dose is needed.',
+            })
+        }
+
+        nextRuntime.attempts += 1
+        return buildOutcome(nextRuntime, {
+            status: 'success',
+            branchChoice: action.choice === true,
+            liveHint: action.choice === true ? 'Preparing the second dose.' : 'Skipping the second dose and finishing up.',
+        })
+    }
+
     const exhaleOutcome = evaluateBreathOut(step, runtime, frame)
     if (exhaleOutcome.status === 'success') {
         const nextRuntime = {

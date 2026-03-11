@@ -49,9 +49,9 @@ function getControlHints(inputMode, step) {
     }
 
     return [
-        'Desktop: click the inhaler to focus, then move the mouse briskly to shake it. Right-click puts it down.',
-        'Hold M to bring it to your mouth. I now also drives the inhale position on desktop, E exhales, Space or H holds breath.',
-        'Press Y or N for the second-dose choice.',
+        'Desktop: click the inhaler to focus. Right-click puts it down.',
+        'Left-click and hold to perform the guided action (breathe out, inhale, or hold breath).',
+        'Shaking is still done by moving the mouse while focused.',
     ]
 }
 
