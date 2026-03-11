@@ -1,5 +1,6 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { useXR, useXRInputSourceState } from '@react-three/xr'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useTrainingStore } from '../../store/useTrainingStore'
@@ -27,6 +28,13 @@ export function TrainingBranchPanel3D(props) {
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const controllerDir = useMemo(() => new THREE.Vector3(), [])
+    const controllerPos = useMemo(() => new THREE.Vector3(), [])
+
+    const xrMode = useXR((state) => state.mode)
+    const rightController = useXRInputSourceState('controller', 'right')
+    const leftController = useXRInputSourceState('controller', 'left')
+    const activeController = rightController ?? leftController
 
     const { currentStepId, dispatchTrainingAction, sessionPhase } = useTrainingStore()
     const isVisible = sessionPhase === 'branching' && currentStepId === 'second_dose_decision'
@@ -74,8 +82,17 @@ export function TrainingBranchPanel3D(props) {
         lookTarget.copy(camera.position)
         root.current.lookAt(lookTarget)
 
-        camera.getWorldDirection(forward)
-        raycaster.set(camera.position, forward)
+        // In XR mode, raycast from the controller; on desktop, use camera gaze
+        if (xrMode === 'immersive-vr' && activeController?.object) {
+            activeController.object.updateWorldMatrix(true, false)
+            activeController.object.getWorldPosition(controllerPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+            raycaster.set(controllerPos, controllerDir)
+        } else {
+            camera.getWorldDirection(forward)
+            raycaster.set(camera.position, forward)
+        }
+
         let nextHover = null
         if (yesButtonRef.current && raycaster.intersectObject(yesButtonRef.current, true).length > 0) {
             nextHover = 'yes'

@@ -1,5 +1,6 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { useXR, useXRInputSourceState } from '@react-three/xr'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
@@ -43,6 +44,13 @@ export function TrainingStartPanel3D(props) {
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const controllerDir = useMemo(() => new THREE.Vector3(), [])
+    const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
+
+    const xrMode = useXR((state) => state.mode)
+    const rightController = useXRInputSourceState('controller', 'right')
+    const leftController = useXRInputSourceState('controller', 'left')
+    const activeController = rightController ?? leftController
 
     const { enabled, isConfigured } = useConvaiRuntime()
     const { sessionPhase, sessionError, startTraining } = useTrainingStore()
@@ -100,8 +108,16 @@ export function TrainingStartPanel3D(props) {
         root.current.lookAt(lookTarget)
 
         if (buttonRef.current) {
-            camera.getWorldDirection(forward)
-            raycaster.set(camera.position, forward)
+            // In XR mode, raycast from the controller; on desktop, use camera gaze
+            if (xrMode === 'immersive-vr' && activeController?.object) {
+                activeController.object.updateWorldMatrix(true, false)
+                activeController.object.getWorldPosition(controllerRayPos)
+                controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+                raycaster.set(controllerRayPos, controllerDir)
+            } else {
+                camera.getWorldDirection(forward)
+                raycaster.set(camera.position, forward)
+            }
             const hits = raycaster.intersectObject(buttonRef.current, true)
             const nextHover = hits.length > 0 && canStart
             hoverRef.current = nextHover

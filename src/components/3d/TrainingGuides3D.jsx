@@ -1,5 +1,6 @@
 import { Line, RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { useXR } from '@react-three/xr'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
@@ -14,6 +15,7 @@ export function TrainingGuides3D() {
     const outerHaloRef = useRef()
     const panelRef = useRef()
     const camera = useThree((state) => state.camera)
+    const xrMode = useXR((state) => state.mode)
     const {
         currentStepId,
         isInhalerFocused,
@@ -24,13 +26,22 @@ export function TrainingGuides3D() {
     } = useTrainingStore()
 
     const currentStep = getStepById(currentStepId)
-    const isVisible =
-        isSessionRunning(sessionPhase) &&
+    const isRunning = isSessionRunning(sessionPhase)
+    const isXR = xrMode === 'immersive-vr'
+
+    const showMouthGuide =
+        isRunning &&
         isInhalerFocused &&
         currentStep &&
         MOUTH_GUIDE_STEPS.has(currentStep.validatorType) &&
         Array.isArray(lastInputFrame?.mouthTargetPosition) &&
         Array.isArray(lastInputFrame?.inhalerPosition)
+
+    // In XR, show the hint panel for ALL step types (not just mouth steps)
+    const showHintPanel =
+        isRunning &&
+        currentStep &&
+        (showMouthGuide || (isXR && isInhalerFocused))
 
     const mouthTarget = useMemo(() => new THREE.Vector3(), [])
     const inhalerPosition = useMemo(() => new THREE.Vector3(), [])
@@ -46,7 +57,7 @@ export function TrainingGuides3D() {
     }
 
     useFrame((_state, delta) => {
-        if (!isVisible) {
+        if (!showMouthGuide && !showHintPanel) {
             return
         }
 
@@ -64,73 +75,91 @@ export function TrainingGuides3D() {
         }
     })
 
-    if (!isVisible) {
+    if (!showMouthGuide && !showHintPanel) {
         return null
     }
 
+    const panelTitle = showMouthGuide ? 'Mouth target' : currentStep?.shortLabel ?? 'Current step'
+    const panelSubtitle = showMouthGuide
+        ? 'Step back if needed. The ring marks where the mouthpiece should land.'
+        : isXR
+            ? 'Follow the XR Controls panel for controller actions.'
+            : ''
+
     return (
         <group>
-            <group position={mouthTarget.toArray()}>
-                <mesh ref={outerHaloRef} rotation={[Math.PI / 2, 0, 0]}>
-                    <torusGeometry args={[0.065, 0.006, 18, 48]} />
-                    <meshBasicMaterial color="#7dd3fc" transparent opacity={0.3} depthWrite={false} />
-                </mesh>
-                <mesh ref={haloRef} rotation={[Math.PI / 2, 0, 0]}>
-                    <torusGeometry args={[0.045, 0.005, 18, 48]} />
-                    <meshBasicMaterial color="#22c55e" transparent opacity={0.62} depthWrite={false} />
-                </mesh>
-            </group>
+            {/* Mouth-target ring — only for mouthSeal / inhalePress */}
+            {showMouthGuide && (
+                <>
+                    <group position={mouthTarget.toArray()}>
+                        <mesh ref={outerHaloRef} rotation={[Math.PI / 2, 0, 0]}>
+                            <torusGeometry args={[0.065, 0.006, 18, 48]} />
+                            <meshBasicMaterial color="#7dd3fc" transparent opacity={0.3} depthWrite={false} />
+                        </mesh>
+                        <mesh ref={haloRef} rotation={[Math.PI / 2, 0, 0]}>
+                            <torusGeometry args={[0.045, 0.005, 18, 48]} />
+                            <meshBasicMaterial color="#22c55e" transparent opacity={0.62} depthWrite={false} />
+                        </mesh>
+                    </group>
 
-            <Line
-                points={[inhalerPosition.toArray(), mouthTarget.toArray()]}
-                color="#67cdec"
-                lineWidth={1.5}
-                transparent
-                opacity={0.45}
-            />
+                    <Line
+                        points={[inhalerPosition.toArray(), mouthTarget.toArray()]}
+                        color="#67cdec"
+                        lineWidth={1.5}
+                        transparent
+                        opacity={0.45}
+                    />
+                </>
+            )}
 
-            <group ref={panelRef} position={panelPosition.clone().add(PANEL_OFFSET).toArray()}>
-                <RoundedBox args={[0.86, 0.32, 0.02]} radius={0.04} smoothness={5}>
-                    <meshStandardMaterial color="#0f1c24" transparent opacity={0.9} />
-                </RoundedBox>
-                <RoundedBox args={[0.82, 0.28, 0.02]} radius={0.035} smoothness={5} position={[0, 0, 0.012]}>
-                    <meshStandardMaterial color="#132a35" transparent opacity={0.94} />
-                </RoundedBox>
-                <Text
-                    position={[0, 0.085, 0.03]}
-                    fontSize={0.034}
-                    maxWidth={0.7}
-                    textAlign="center"
-                    anchorX="center"
-                    anchorY="middle"
-                    color="#dff8ff"
-                >
-                    Mouth target
-                </Text>
-                <Text
-                    position={[0, -0.01, 0.03]}
-                    fontSize={0.026}
-                    maxWidth={0.72}
-                    lineHeight={1.2}
-                    textAlign="center"
-                    anchorX="center"
-                    anchorY="middle"
-                    color="#f8fafc"
-                >
-                    {liveHint}
-                </Text>
-                <Text
-                    position={[0, -0.11, 0.03]}
-                    fontSize={0.022}
-                    maxWidth={0.66}
-                    textAlign="center"
-                    anchorX="center"
-                    anchorY="middle"
-                    color="#84afc0"
-                >
-                    Step back if needed. The ring marks where the mouthpiece should land.
-                </Text>
-            </group>
+            {/* Floating hint panel — always visible when hint panel should show */}
+            {showHintPanel && (
+                <group ref={panelRef} position={panelPosition.clone().add(PANEL_OFFSET).toArray()}>
+                    <RoundedBox args={[0.86, 0.32, 0.02]} radius={0.04} smoothness={5}>
+                        <meshStandardMaterial color="#0f1c24" transparent opacity={0.9} />
+                    </RoundedBox>
+                    <RoundedBox args={[0.82, 0.28, 0.02]} radius={0.035} smoothness={5} position={[0, 0, 0.012]}>
+                        <meshStandardMaterial color="#132a35" transparent opacity={0.94} />
+                    </RoundedBox>
+                    <Text
+                        position={[0, 0.085, 0.03]}
+                        fontSize={0.034}
+                        maxWidth={0.7}
+                        textAlign="center"
+                        anchorX="center"
+                        anchorY="middle"
+                        color="#dff8ff"
+                    >
+                        {panelTitle}
+                    </Text>
+                    <Text
+                        position={[0, -0.01, 0.03]}
+                        fontSize={0.026}
+                        maxWidth={0.72}
+                        lineHeight={1.2}
+                        textAlign="center"
+                        anchorX="center"
+                        anchorY="middle"
+                        color="#f8fafc"
+                    >
+                        {liveHint}
+                    </Text>
+                    {panelSubtitle ? (
+                        <Text
+                            position={[0, -0.11, 0.03]}
+                            fontSize={0.022}
+                            maxWidth={0.66}
+                            textAlign="center"
+                            anchorX="center"
+                            anchorY="middle"
+                            color="#84afc0"
+                        >
+                            {panelSubtitle}
+                        </Text>
+                    ) : null}
+                </group>
+            )}
         </group>
     )
 }
+
