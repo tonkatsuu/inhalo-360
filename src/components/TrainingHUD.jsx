@@ -88,16 +88,19 @@ export function TrainingHUD() {
     const controlHints = getControlHints(inputMode, currentStep)
     const desktopFlowPreview = getDesktopFlowPreview(visibleSteps, currentStepId)
     const showLiveTraining = isSessionRunning(sessionPhase) || sessionPhase === 'completed'
+    
+    const isDesktop = inputMode !== 'xr'
 
     return (
         <div
             style={{
                 position: 'absolute',
-                right: 24,
+                left: isDesktop ? 24 : undefined,
+                right: isDesktop ? undefined : 24,
                 bottom: 22,
                 zIndex: 10,
-                width: 350,
-                padding: '18px 18px 16px',
+                width: isDesktop ? 300 : 350,
+                padding: isDesktop ? '14px' : '18px 18px 16px',
                 borderRadius: 20,
                 background: 'linear-gradient(180deg, rgba(248, 243, 233, 0.94), rgba(240, 233, 221, 0.92))',
                 border: '1px solid rgba(115, 139, 151, 0.18)',
@@ -135,7 +138,7 @@ export function TrainingHUD() {
 
             <div
                 style={{
-                    marginBottom: 12,
+                    marginBottom: isDesktop ? 0 : 12,
                     padding: '10px 12px',
                     borderRadius: 12,
                     background: 'rgba(93, 128, 143, 0.08)',
@@ -150,7 +153,8 @@ export function TrainingHUD() {
             {showLiveTraining && currentStep && (
                 <div
                     style={{
-                        marginBottom: 14,
+                        marginTop: isDesktop ? 12 : 0,
+                        marginBottom: isDesktop ? 0 : 14,
                         padding: '12px 13px',
                         borderRadius: 14,
                         background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(243, 236, 224, 0.82))',
@@ -184,75 +188,83 @@ export function TrainingHUD() {
                 </div>
             )}
 
-            <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5c8595', marginBottom: 8 }}>
-                    Controls
-                </div>
-                {controlHints.map((hint) => (
-                    <div key={hint} style={{ fontSize: 12, lineHeight: 1.45, color: '#546d7a', marginBottom: 4 }}>
-                        {hint}
+            {!isDesktop && (
+                <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5c8595', marginBottom: 8 }}>
+                        Controls
                     </div>
-                ))}
-            </div>
+                    {controlHints.map((hint) => (
+                        <div key={hint} style={{ fontSize: 12, lineHeight: 1.45, color: '#546d7a', marginBottom: 4 }}>
+                            {hint}
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {showLiveTraining ? (
                 <>
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5c8595', marginBottom: 8 }}>
-                        Flow Preview
-                    </div>
-                    {desktopFlowPreview.map((step) => {
-                        const isCompleted = completedSteps.includes(step.id)
-                        const isCurrent = currentStepId === step.id
-                        return (
-                            <div
-                                key={step.id}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'flex-start',
-                                    gap: 8,
-                                    padding: '4px 0',
-                                    opacity: isCompleted ? 0.48 : 1,
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        marginTop: 2,
-                                        width: 14,
-                                        height: 14,
-                                        borderRadius: 999,
-                                        border: '2px solid',
-                                        borderColor: isCompleted ? '#2b9348' : isCurrent ? '#4b7a8c' : '#95a8b1',
-                                        background: isCompleted ? '#2b9348' : isCurrent ? 'rgba(75, 122, 140, 0.16)' : 'transparent',
-                                        flexShrink: 0,
-                                    }}
-                                />
-                                <div style={{ color: isCurrent ? '#16303d' : '#5a6f79', lineHeight: 1.35, textDecoration: isCompleted ? 'line-through' : 'none' }}>
-                                    {step.instruction}
-                                </div>
+                    {!isDesktop && (
+                        <>
+                            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5c8595', marginBottom: 8 }}>
+                                Flow Preview
                             </div>
-                        )
-                    })}
+                            {desktopFlowPreview.map((step) => {
+                                const isCompleted = completedSteps.includes(step.id)
+                                const isCurrent = currentStepId === step.id
+                                return (
+                                    <div
+                                        key={step.id}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: 8,
+                                            padding: '4px 0',
+                                            opacity: isCompleted ? 0.48 : 1,
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                marginTop: 2,
+                                                width: 14,
+                                                height: 14,
+                                                borderRadius: 999,
+                                                border: '2px solid',
+                                                borderColor: isCompleted ? '#2b9348' : isCurrent ? '#4b7a8c' : '#95a8b1',
+                                                background: isCompleted ? '#2b9348' : isCurrent ? 'rgba(75, 122, 140, 0.16)' : 'transparent',
+                                                flexShrink: 0,
+                                            }}
+                                        />
+                                        <div style={{ color: isCurrent ? '#16303d' : '#5a6f79', lineHeight: 1.35, textDecoration: isCompleted ? 'line-through' : 'none' }}>
+                                            {step.instruction}
+                                        </div>
+                                    </div>
+                                )
+                            })}
 
-                    {visibleSteps.length > desktopFlowPreview.length && (
-                        <div style={{ marginTop: 6, fontSize: 12, color: '#6f8792' }}>
-                            Full step list stays on the in-world clipboard.
-                        </div>
+                            {visibleSteps.length > desktopFlowPreview.length && (
+                                <div style={{ marginTop: 6, fontSize: 12, color: '#6f8792' }}>
+                                    Full step list stays on the in-world clipboard.
+                                </div>
+                            )}
+                        </>
                     )}
                 </>
             ) : (
-                <div
-                    style={{
-                        padding: '12px 13px',
-                        borderRadius: 14,
-                        background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(243, 236, 224, 0.82))',
-                        border: '1px solid rgba(112, 139, 153, 0.18)',
-                        color: '#4c6470',
-                        lineHeight: 1.5,
-                        fontSize: 13,
-                    }}
-                >
-                    Start the in-world session to begin guided validation. Until then, the clipboard remains the full reference list.
-                </div>
+                !isDesktop && (
+                    <div
+                        style={{
+                            padding: '12px 13px',
+                            borderRadius: 14,
+                            background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(243, 236, 224, 0.82))',
+                            border: '1px solid rgba(112, 139, 153, 0.18)',
+                            color: '#4c6470',
+                            lineHeight: 1.5,
+                            fontSize: 13,
+                        }}
+                    >
+                        Start the in-world session to begin guided validation. Until then, the clipboard remains the full reference list.
+                    </div>
+                )
             )}
 
             {isTrainingComplete && (
