@@ -14,6 +14,8 @@ export const defaultConvaiRuntime = {
     disconnect: noop,
     mute: noop,
     unmute: noop,
+    startRecord: noop,
+    stopRecord: noop,
     sendUserTextMessage: noop,
     updateDynamicInfo: noop,
     updateTemplateKeys: noop,

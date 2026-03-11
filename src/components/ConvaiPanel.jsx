@@ -143,13 +143,23 @@ export function ConvaiPanel({
 
                 <button
                     type="button"
-                    style={panelButtonStyle({ disabled: !isConfigured || !isConnected })}
+                    style={panelButtonStyle({ 
+                        tone: isAudioMuted ? 'default' : 'primary',
+                        disabled: !isConfigured || !isConnected 
+                    })}
                     disabled={!isConfigured || !isConnected}
-                    onClick={isAudioMuted ? onUnmute : onMute}
+                    onPointerDown={isConfigured && isConnected ? onUnmute : undefined}
+                    onPointerUp={isConfigured && isConnected ? onMute : undefined}
                 >
-                    {isAudioMuted ? 'Unmute Mic' : 'Mute Mic'}
+                    {isAudioMuted ? 'Push to Talk' : 'Recording...'}
                 </button>
             </div>
+
+            {isConnected && (
+                <div style={{ marginTop: 12, fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                    Hold <span style={{ color: '#f5f5f5', fontWeight: 600, padding: '1px 4px', background: 'rgba(255,255,255,0.1)', borderRadius: 3 }}>SPACE</span> to talk
+                </div>
+            )}
         </aside>
     )
 }

@@ -5,6 +5,7 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
+import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 
 const PANEL_WIDTH = 0.72
 const PANEL_HEIGHT = 0.42
@@ -89,6 +90,9 @@ export function XRControlHints3D(props) {
         sessionPhase,
         stepProgress,
     } = useTrainingStore()
+
+    const { state: convaiState, audioControls } = useConvaiRuntime()
+    const isRecording = convaiState?.isConnected === true && audioControls?.isAudioMuted === false
 
     const currentStep = getStepById(currentStepId)
     const isRunning = isSessionRunning(sessionPhase)
@@ -227,6 +231,21 @@ export function XRControlHints3D(props) {
                 >
                     {currentStep?.shortLabel ?? ''}
                 </Text>
+
+                {/* Recording Indicator */}
+                {isRecording && (
+                    <Text
+                        position={[0, PANEL_HEIGHT / 2 + 0.05, 0.02]}
+                        fontSize={0.03}
+                        color="#ef4444"
+                        fontWeight="bold"
+                        textAlign="center"
+                        anchorX="center"
+                        anchorY="middle"
+                    >
+                        ● Recording...
+                    </Text>
+                )}
             </group>
         </group>
     )

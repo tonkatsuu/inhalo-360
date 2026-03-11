@@ -35,7 +35,7 @@ export function useConvaiNpc({ apiKey, characterId }) {
         apiKey,
         characterId,
         enableVideo: false,
-        startWithAudioOn: true,
+        startWithAudioOn: false,
         ttsEnabled: true,
         enableLipsync: true,
         blendshapeConfig: {
@@ -111,6 +111,8 @@ export function useConvaiNpc({ apiKey, characterId }) {
         disconnect: () => client.disconnect(),
         mute: () => client.audioControls?.muteAudio?.(),
         unmute: () => client.audioControls?.unmuteAudio?.(),
+        startRecord: () => client.audioControls?.unmuteAudio?.(),
+        stopRecord: () => client.audioControls?.muteAudio?.(),
         sendUserTextMessage: (text) => client.sendUserTextMessage?.(text),
         updateDynamicInfo: (payload) => client.updateDynamicInfo?.(payload),
         updateTemplateKeys: (templateKeys) => client.updateTemplateKeys?.(templateKeys),

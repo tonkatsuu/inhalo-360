@@ -2,6 +2,7 @@ import React from 'react'
 import { BrandBadge } from './BrandBadge'
 import { getStepById, getVisibleTrainingSteps, useTrainingStore } from '../store/useTrainingStore'
 import { isSessionRunning } from '../training/engine'
+import { useConvaiRuntime } from '../convai/useConvaiRuntime'
 
 function getStatusText(sessionPhase, sessionError) {
     if (sessionError) {
@@ -40,7 +41,8 @@ function getControlHints(inputMode, step) {
         return [
             'Quest: point and select the inhaler to grab it.',
             'Thumbstick up = simulate inhale, down = simulate exhale.',
-            'Trigger = press inhaler, B = hold breath, select the Yes/No panel for second dose.',
+            'Trigger = press inhaler, B = hold breath.',
+            'Hold X/Y on Left Controller to Talk to Pharmacist.',
         ]
     }
 
@@ -51,7 +53,7 @@ function getControlHints(inputMode, step) {
     return [
         'Desktop: click the inhaler to focus. Right-click puts it down.',
         'Left-click and hold to perform the guided action (breathe out, inhale, or hold breath).',
-        'Shaking is still done by moving the mouse while focused.',
+        'Hold Space to Talk to Pharmacist.',
     ]
 }
 
@@ -76,6 +78,9 @@ export function TrainingHUD() {
         sessionPhase,
         stepProgress,
     } = useTrainingStore()
+
+    const { state: convaiState, audioControls } = useConvaiRuntime()
+    const isRecording = convaiState?.isConnected === true && audioControls?.isAudioMuted === false
 
     const currentStep = getStepById(currentStepId)
     const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
@@ -113,8 +118,17 @@ export function TrainingHUD() {
                         fontSize: 11,
                         textTransform: 'uppercase',
                         letterSpacing: '0.08em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
                     }}
                 >
+                    {isRecording && (
+                        <div style={{ color: '#ef4444', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
+                            RECORDING
+                        </div>
+                    )}
                     {inputMode === 'xr' ? 'Quest / XR' : 'Desktop'}
                 </div>
             </div>

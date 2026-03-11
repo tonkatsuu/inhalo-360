@@ -13,6 +13,7 @@ import { TrainingBranchPanel3D } from './components/3d/TrainingBranchPanel3D'
 import { TrainingGuides3D } from './components/3d/TrainingGuides3D'
 import { XRControlHints3D } from './components/3d/XRControlHints3D'
 import { VideoPanel3D } from './components/3d/VideoPanel3D'
+import { ConvaiXRMicControls } from './components/3d/ConvaiXRMicControls'
 import { ConvaiProvider } from './convai/ConvaiContext'
 import { ConvaiTrainingOrchestrator } from './components/ConvaiTrainingOrchestrator'
 import { TrainingHUD } from './components/TrainingHUD'
@@ -91,6 +92,7 @@ export default function App() {
                         <VideoPanel3D position={[-3.6, 1.72, -1.8]} />
                         <XRControlHints3D position={[-1.55, 1.88, -0.15]} />
                         <FpsControls canLockPointer collisionLayout={collisionLayout} />
+                        <ConvaiXRMicControls />
                     </XR>
                 </Canvas>
             </div>

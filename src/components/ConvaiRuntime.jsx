@@ -40,8 +40,37 @@ function InvalidConvaiRuntime({ config, isDev }) {
 }
 
 function ActiveConvaiRuntime({ config, isDev }) {
-    const { state, audioControls, room, connect, disconnect, mute, unmute } = useConvaiRuntime()
+    const { state, audioControls, room, connect, disconnect, mute, unmute, startRecord, stopRecord } = useConvaiRuntime()
     const isAudioMuted = audioControls?.isAudioMuted ?? true
+    const isConnected = state?.isConnected === true
+
+    useEffect(() => {
+        if (!isConnected) return undefined
+
+        const handleKeyDown = (event) => {
+            if (event.code === 'Space' && !event.repeat) {
+                // Prevent scrolling etc if there's any
+                if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+                    event.preventDefault()
+                    startRecord()
+                }
+            }
+        }
+
+        const handleKeyUp = (event) => {
+            if (event.code === 'Space') {
+                stopRecord()
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('keyup', handleKeyUp)
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('keyup', handleKeyUp)
+        }
+    }, [isConnected, startRecord, stopRecord])
 
     useEffect(() => {
         if (!isDev) {
@@ -56,12 +85,14 @@ function ActiveConvaiRuntime({ config, isDev }) {
             disconnect,
             mute,
             unmute,
+            startRecord,
+            stopRecord,
         }
 
         return () => {
             delete window.__INHALO_CONVAI__
         }
-    }, [connect, disconnect, isDev, mute, state, unmute])
+    }, [connect, disconnect, isDev, mute, state, unmute, startRecord, stopRecord])
 
     return (
         <>
