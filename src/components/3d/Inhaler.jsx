@@ -57,7 +57,8 @@ export function Inhaler(props) {
     const controllerPos = useMemo(() => new THREE.Vector3(), [])
     const controllerQuat = useMemo(() => new THREE.Quaternion(), [])
     const holdOffset = useMemo(() => new THREE.Vector3(0.018, -0.045, -0.035), [])
-    const holdQuatOffset = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI, 0, Math.PI / 2)), [])
+    // Flip inhaler upside-down so controller grip maps to real inhaler hold (mouthpiece toward face, canister at top)
+    const holdQuatOffset = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, Math.PI, 0)), [])
     const highlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
     const axesCache = useMemo(
         () => ({

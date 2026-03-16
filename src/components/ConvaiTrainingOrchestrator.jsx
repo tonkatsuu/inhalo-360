@@ -81,6 +81,7 @@ export function ConvaiTrainingOrchestrator() {
         acknowledgeCoachMessage,
         setSessionError,
         clearSessionError,
+        trainingMode,
     } = useTrainingStore()
 
     const connectRequestedRef = useRef(false)
@@ -126,6 +127,10 @@ export function ConvaiTrainingOrchestrator() {
             return
         }
 
+        if (trainingMode === 'assessment') {
+            return
+        }
+
         if (sessionPhase !== 'starting') {
             return
         }
@@ -154,7 +159,7 @@ export function ConvaiTrainingOrchestrator() {
     }, [clearSessionError, client, connect, enabled, isConfigured, markTrainingActive, sessionPhase, setSessionError, state?.isConnected])
 
     useEffect(() => {
-        if (!enabled || !isConfigured || !state?.isConnected || !(client?.isBotReady || isBotReadyRef.current)) {
+        if (trainingMode === 'assessment' || !enabled || !isConfigured || !state?.isConnected || !(client?.isBotReady || isBotReadyRef.current)) {
             return
         }
 
@@ -170,7 +175,7 @@ export function ConvaiTrainingOrchestrator() {
     }, [client, currentStepId, enabled, isConfigured, liveHint, secondDoseChoice, sessionPhase, state?.isConnected, stepProgress, updateDynamicInfo])
 
     useEffect(() => {
-        if (!pendingCoachMessage) {
+        if (trainingMode === 'assessment' || !pendingCoachMessage) {
             return
         }
 

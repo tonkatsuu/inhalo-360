@@ -23,6 +23,7 @@ export function TrainingGuides3D() {
         liveHint,
         sessionPhase,
         stepProgress,
+        trainingMode,
     } = useTrainingStore()
 
     const currentStep = getStepById(currentStepId)
@@ -30,6 +31,7 @@ export function TrainingGuides3D() {
     const isXR = xrMode === 'immersive-vr'
 
     const showMouthGuide =
+        trainingMode !== 'assessment' &&
         isRunning &&
         isInhalerFocused &&
         currentStep &&
@@ -39,6 +41,7 @@ export function TrainingGuides3D() {
 
     // In XR, show the hint panel for ALL step types (not just mouth steps)
     const showHintPanel =
+        trainingMode !== 'assessment' &&
         isRunning &&
         currentStep &&
         (showMouthGuide || (isXR && isInhalerFocused))

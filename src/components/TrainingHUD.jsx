@@ -77,10 +77,15 @@ export function TrainingHUD() {
         sessionError,
         sessionPhase,
         stepProgress,
+        trainingMode,
+        finishAssessment,
     } = useTrainingStore()
 
     const { state: convaiState, audioControls } = useConvaiRuntime()
     const isRecording = convaiState?.isConnected === true && audioControls?.isAudioMuted === false
+    
+    // In assessment mode, we use Web Speech API recording indicator indirectly
+    const isAssessment = trainingMode === 'assessment'
 
     const currentStep = getStepById(currentStepId)
     const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
@@ -108,10 +113,12 @@ export function TrainingHUD() {
                 color: '#16303d',
                 backdropFilter: 'blur(14px)',
                 userSelect: 'none',
+                opacity: (isAssessment && sessionPhase === 'completed') ? 0 : 1, // Hide HUD when results are shown
+                transition: 'opacity 0.3s ease',
             }}
         >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <BrandBadge compact subtitle="Ava coaching" />
+                <BrandBadge compact subtitle={isAssessment ? "Self Assessment" : "Ava coaching"} />
                 <div
                     style={{
                         padding: '6px 10px',
@@ -132,25 +139,54 @@ export function TrainingHUD() {
                             RECORDING
                         </div>
                     )}
+                    {isAssessment && (
+                        <div style={{ color: '#4b7a8c', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: '#4b7a8c' }} />
+                            LISTENING
+                        </div>
+                    )}
                     {inputMode === 'xr' ? 'Quest / XR' : 'Desktop'}
                 </div>
             </div>
 
-            <div
-                style={{
-                    marginBottom: isDesktop ? 0 : 12,
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    background: 'rgba(93, 128, 143, 0.08)',
-                    color: sessionError ? '#b84747' : '#506976',
-                    lineHeight: 1.45,
-                    fontSize: 13,
-                }}
-            >
-                {statusText}
-            </div>
+            {!isAssessment && (
+                <div
+                    style={{
+                        marginBottom: isDesktop ? 0 : 12,
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        background: 'rgba(93, 128, 143, 0.08)',
+                        color: sessionError ? '#b84747' : '#506976',
+                        lineHeight: 1.45,
+                        fontSize: 13,
+                        fontWeight: 400,
+                    }}
+                >
+                    {statusText}
+                </div>
+            )}
 
-            {showLiveTraining && currentStep && (
+            {isAssessment && !isTrainingComplete && (
+                <button
+                    onClick={finishAssessment}
+                    style={{
+                        width: '100%',
+                        marginTop: 10,
+                        padding: '8px',
+                        borderRadius: 10,
+                        border: '1px solid rgba(185, 28, 28, 0.2)',
+                        background: 'rgba(185, 28, 28, 0.08)',
+                        color: '#b91c1c',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                    }}
+                >
+                    End Assessment Early
+                </button>
+            )}
+
+            {showLiveTraining && currentStep && !isAssessment && (
                 <div
                     style={{
                         marginTop: isDesktop ? 12 : 0,
@@ -188,7 +224,7 @@ export function TrainingHUD() {
                 </div>
             )}
 
-            {!isDesktop && (
+            {!isDesktop && !isAssessment && (
                 <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5c8595', marginBottom: 8 }}>
                         Controls
@@ -201,7 +237,7 @@ export function TrainingHUD() {
                 </div>
             )}
 
-            {showLiveTraining ? (
+            {showLiveTraining && !isAssessment ? (
                 <>
                     {!isDesktop && (
                         <>

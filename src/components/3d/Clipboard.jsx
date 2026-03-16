@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html, useGLTF } from '@react-three/drei'
+import { useXR, useXRControllerButtonEvent, useXRInputSourceState } from '@react-three/xr'
 import * as THREE from 'three'
 import { getVisibleTrainingSteps, useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
@@ -70,9 +71,20 @@ export function Clipboard(props) {
         focusDistanceOffset,
         sessionPhase,
         recordMistake,
+        trainingMode,
     } = useTrainingStore()
 
     const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
+
+    const rightController = useXRInputSourceState('controller', 'right')
+    const leftController = useXRInputSourceState('controller', 'left')
+
+    useXRControllerButtonEvent(rightController, 'xr-standard-squeeze', (state) => {
+        if (state === 'pressed' && isClipboardFocused) setClipboardFocused(false)
+    })
+    useXRControllerButtonEvent(leftController, 'xr-standard-squeeze', (state) => {
+        if (state === 'pressed' && isClipboardFocused) setClipboardFocused(false)
+    })
 
     useEffect(() => {
         // Reset the captured flag when props change so the resting position
@@ -138,7 +150,8 @@ export function Clipboard(props) {
 
         if (isClipboardFocused) {
             camera.getWorldDirection(forward)
-            focusTarget.copy(camera.position).add(forward.multiplyScalar(focusDistanceOffset))
+            const targetDistance = focusDistanceOffset + 0.15
+            focusTarget.copy(camera.position).add(forward.multiplyScalar(targetDistance))
             group.current.position.lerp(focusTarget, alphaMove)
 
             const lookAtMatrix = new THREE.Matrix4()
@@ -189,6 +202,8 @@ export function Clipboard(props) {
     const outlineColor = '#ffd46b'
     const boardEdges = useMemo(() => new THREE.EdgesGeometry(nodes.Mesh002.geometry), [nodes])
     const pageEdges = useMemo(() => new THREE.EdgesGeometry(nodes.page001.geometry), [nodes])
+
+    if (trainingMode === 'assessment') return null
 
     return (
         <group ref={group} {...props} dispose={null} onClick={handleFocus} onContextMenu={handleReturn}>

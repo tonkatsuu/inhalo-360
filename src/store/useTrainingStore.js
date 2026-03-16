@@ -69,6 +69,8 @@ function getInitialState() {
             mouthTargetPosition: null,
             isXR: false,
         },
+        assessmentChecklist: [],
+        trainingMode: null, // 'learning' | 'assessment'
         lastStepCompletion: null,
     }
 }
@@ -123,6 +125,9 @@ export const useTrainingStore = create((set, get) => {
     }
 
     const completeTraining = () => {
+        const { trainingMode } = get()
+        const isAssessment = trainingMode === 'assessment'
+
         set({
             sessionPhase: 'completed',
             hasReviewOpen: true,
@@ -131,8 +136,10 @@ export const useTrainingStore = create((set, get) => {
             isInhalerFocused: false,
             isClipboardFocused: false,
             stepProgress: 1,
-            liveHint: 'Training complete. Review the session or ask Ava a follow-up question.',
-            pendingCoachMessage: createQueuedCoachMessage({
+            liveHint: isAssessment 
+                ? 'Assessment complete. Review your results.'
+                : 'Training complete. Review the session or ask Ava a follow-up question.',
+            pendingCoachMessage: isAssessment ? null : createQueuedCoachMessage({
                 kind: 'completion',
                 prompt:
                     'Congratulate the user for completing the inhaler session, briefly reinforce the key habits, and invite follow-up questions.',
@@ -216,11 +223,12 @@ export const useTrainingStore = create((set, get) => {
     return {
         ...getInitialState(),
 
-        startTraining: () =>
+        startTraining: (mode = 'learning') =>
             set((state) => ({
                 ...getInitialState(),
+                trainingMode: mode,
                 hasTrainingStarted: true,
-                sessionPhase: 'starting',
+                sessionPhase: mode === 'assessment' ? 'awaitingAction' : 'starting',
                 startedAt: Date.now(),
                 focusDistanceOffset: state.focusDistanceOffset,
             })),
@@ -291,7 +299,10 @@ export const useTrainingStore = create((set, get) => {
                 ...frame,
             }
 
-            if (state.inputMode !== nextInputFrame.inputMode || state.lastInputFrame !== nextInputFrame) {
+            const inputModeChanged = state.inputMode !== (nextInputFrame.inputMode ?? state.inputMode)
+            const frameChanged =
+                JSON.stringify(state.lastInputFrame) !== JSON.stringify(nextInputFrame)
+            if (inputModeChanged || frameChanged) {
                 set({
                     lastInputFrame: nextInputFrame,
                     inputMode: nextInputFrame.inputMode ?? state.inputMode,
@@ -393,11 +404,25 @@ export const useTrainingStore = create((set, get) => {
                 focusDistanceOffset: state.focusDistanceOffset,
             })),
 
-        resetTraining: () =>
+        finishAssessment: () => {
+            const { trainingMode, sessionPhase } = get()
+            if (trainingMode !== 'assessment' || sessionPhase === 'completed') return
+            completeTraining()
+        },
+
+        recordAssessmentStep: (stepId, physicalComplete, speechConfirmed) => {
             set((state) => ({
-                ...getInitialState(),
-                focusDistanceOffset: state.focusDistanceOffset,
-            })),
+                assessmentChecklist: [
+                    ...state.assessmentChecklist,
+                    {
+                        stepId,
+                        physicalComplete,
+                        speechConfirmed,
+                        timestamp: Date.now(),
+                    },
+                ],
+            }))
+        },
 
         getVisibleSteps: () => getVisibleTrainingSteps(get().secondDoseChoice),
     }

@@ -1,8 +1,10 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { useXR, useXRInputSourceState } from '@react-three/xr'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
+import { buildAssessmentResults } from '../../training/assessment'
 import { BrandChip3D } from './BrandChip3D'
 
 const PANEL_WIDTH = 1.34
@@ -47,41 +49,72 @@ export function TrainingReviewPanel3D(props) {
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const controllerDir = useMemo(() => new THREE.Vector3(), [])
+    const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
 
-    const { sessionPhase, hasReviewOpen, mistakes, stepResults, resetTrainingSession, closeReview } = useTrainingStore()
+    const xrMode = useXR((state) => state.mode)
+    const rightController = useXRInputSourceState('controller', 'right')
+    const leftController = useXRInputSourceState('controller', 'left')
+    const activeController = rightController ?? leftController
+
+    const { 
+        sessionPhase, 
+        hasReviewOpen, 
+        mistakes, 
+        stepResults, 
+        trainingMode, 
+        assessmentChecklist,
+        startTraining,
+        getVisibleSteps 
+    } = useTrainingStore()
+
+    const isAssessment = trainingMode === 'assessment'
 
     const isVisible = sessionPhase === 'completed' && hasReviewOpen
     const isRendered = isMounted || isVisible
 
-    const reviewItems = stepResults
-        .filter((result) => result.failures > 0)
-        .map((result) => {
-            const step = getStepById(result.stepId)
-            const latestMistake = [...mistakes].reverse().find((mistake) => mistake.stepId === result.stepId)
-            return {
-                id: result.stepId,
-                title: clampLine(`${step?.shortLabel ?? step?.instruction ?? result.stepId}: ${result.failures} correction${result.failures === 1 ? '' : 's'} needed`, 52),
-                detail: clampLine(
-                    latestMistake?.correction ??
-                        `Completed after ${result.attempts} attempts. The user improved on retry during this step.`,
-                    52,
-                ),
-            }
-        })
+    const assessmentResults = useMemo(() => {
+        if (!isAssessment) return null
+        return buildAssessmentResults(assessmentChecklist, getVisibleSteps())
+    }, [isAssessment, assessmentChecklist, getVisibleSteps])
 
-    const summaryText =
-        reviewItems.length === 0
+    const reviewItems = isAssessment 
+        ? [
+            { id: 'score', title: `Final Score: ${assessmentResults?.score}%`, detail: assessmentResults?.isPass ? 'Excellent work! You have mastered the technique.' : 'Keep practicing to improve your accuracy and narration.' },
+            ...(assessmentResults?.missedSteps.length > 0 ? [{ id: 'missed', title: 'Steps Missed', detail: assessmentResults.missedSteps.join(', ') }] : []),
+            ...(assessmentResults?.outOfOrderSteps.length > 0 ? [{ id: 'order', title: 'Performed Out of Order', detail: assessmentResults.outOfOrderSteps.join(', ') }] : []),
+            ...(assessmentResults?.speechMisses.length > 0 ? [{ id: 'speech', title: 'Narration Needed', detail: assessmentResults.speechMisses.join(', ') }] : []),
+        ]
+        : stepResults
+            .filter((result) => result.failures > 0)
+            .map((result) => {
+                const step = getStepById(result.stepId)
+                const latestMistake = [...mistakes].reverse().find((mistake) => mistake.stepId === result.stepId)
+                return {
+                    id: result.stepId,
+                    title: clampLine(`${step?.shortLabel ?? step?.instruction ?? result.stepId}: ${result.failures} correction${result.failures === 1 ? '' : 's'} needed`, 52),
+                    detail: clampLine(
+                        latestMistake?.correction ??
+                            `Completed after ${result.attempts} attempts. The user improved on retry during this step.`,
+                        52,
+                    ),
+                }
+            })
+
+    const summaryText = isAssessment
+        ? `Assessment complete. ${assessmentResults?.isPass ? 'Success!' : 'Review the feedback below.'}`
+        : reviewItems.length === 0
             ? 'No major coaching corrections were needed. Ava is still available if you want follow-up advice.'
             : `${reviewItems.length} step${reviewItems.length === 1 ? '' : 's'} needed correction. Review the key fixes below, then retry if needed.`
     const activeIssue = reviewItems.length > 0 ? reviewItems[Math.min(currentIssueIndex, reviewItems.length - 1)] : null
 
-    const handlePrimary = useCallback(() => {
-        resetTrainingSession()
-    }, [resetTrainingSession])
+    const handleRetry = useCallback(() => {
+        startTraining(isAssessment ? 'assessment' : 'learning')
+    }, [isAssessment, startTraining])
 
-    const handleSecondary = useCallback(() => {
-        closeReview()
-    }, [closeReview])
+    const handleClose = useCallback(() => {
+        startTraining(isAssessment ? 'learning' : 'assessment')
+    }, [isAssessment, startTraining])
 
     const handlePrevIssue = useCallback(() => {
         setCurrentIssueIndex((index) => (reviewItems.length === 0 ? 0 : (index - 1 + reviewItems.length) % reviewItems.length))
@@ -100,11 +133,11 @@ export function TrainingReviewPanel3D(props) {
             if (event.button !== 0) return
             if (hoverRef.current === 'retry') {
                 event.preventDefault()
-                handlePrimary()
+                handleRetry()
             }
             if (hoverRef.current === 'close') {
                 event.preventDefault()
-                handleSecondary()
+                handleClose()
             }
             if (hoverRef.current === 'prev') {
                 event.preventDefault()
@@ -120,7 +153,7 @@ export function TrainingReviewPanel3D(props) {
         return () => {
             window.removeEventListener('pointerdown', handlePointerDown)
         }
-    }, [handleNextIssue, handlePrevIssue, handlePrimary, handleSecondary, isRendered])
+    }, [handleNextIssue, handlePrevIssue, handleRetry, handleClose, isRendered])
 
     useFrame((_state, delta) => {
         if (!isRendered || !root.current) {
@@ -137,8 +170,15 @@ export function TrainingReviewPanel3D(props) {
         lookTarget.copy(camera.position)
         root.current.lookAt(lookTarget)
 
-        camera.getWorldDirection(forward)
-        raycaster.set(camera.position, forward)
+        if (xrMode === 'immersive-vr' && activeController?.object) {
+            activeController.object.updateWorldMatrix(true, false)
+            activeController.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+            raycaster.set(controllerRayPos, controllerDir)
+        } else {
+            camera.getWorldDirection(forward)
+            raycaster.set(camera.position, forward)
+        }
 
         let nextHover = null
         if (retryButtonRef.current && raycaster.intersectObject(retryButtonRef.current, true).length > 0) {
@@ -232,7 +272,7 @@ export function TrainingReviewPanel3D(props) {
                     anchorY="middle"
                     color="#f8fafc"
                 >
-                    Training Complete
+                    {isAssessment ? 'Assessment Results' : 'Training Complete'}
                 </Text>
 
                 <Text
@@ -338,20 +378,20 @@ export function TrainingReviewPanel3D(props) {
                 )}
 
                 <group position={[-0.27, -0.46, 0.04]}>
-                    <RoundedBox ref={retryButtonRef} args={[BUTTON_WIDTH, BUTTON_HEIGHT, 0.05]} radius={0.05} smoothness={5}>
+                    <RoundedBox ref={retryButtonRef} args={[BUTTON_WIDTH, BUTTON_HEIGHT, 0.05]} radius={0.05} smoothness={5} onClick={() => startTraining(isAssessment ? 'assessment' : 'learning')}>
                         <meshStandardMaterial ref={retryMaterial} color="#22c55e" transparent opacity={0.96} />
                     </RoundedBox>
                     <Text position={[0, 0, 0.04]} fontSize={0.045} maxWidth={0.34} anchorX="center" anchorY="middle" textAlign="center" color="#04130a">
-                        Try Again
+                        {isAssessment ? 'Retry Assessment' : 'Restart Learning'}
                     </Text>
                 </group>
 
                 <group position={[0.27, -0.46, 0.04]}>
-                    <RoundedBox ref={closeButtonRef} args={[BUTTON_WIDTH, BUTTON_HEIGHT, 0.05]} radius={0.05} smoothness={5}>
+                    <RoundedBox ref={closeButtonRef} args={[BUTTON_WIDTH, BUTTON_HEIGHT, 0.05]} radius={0.05} smoothness={5} onClick={isAssessment ? () => startTraining('learning') : () => startTraining('assessment')}>
                         <meshStandardMaterial ref={closeMaterial} color="#374550" transparent opacity={0.9} />
                     </RoundedBox>
                     <Text position={[0, 0, 0.04]} fontSize={0.045} maxWidth={0.34} anchorX="center" anchorY="middle" textAlign="center" color="#e2e8f0">
-                        Close Review
+                        {isAssessment ? 'Back to Learning' : 'Start Assessment'}
                     </Text>
                 </group>
             </group>

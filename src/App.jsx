@@ -19,6 +19,8 @@ import { ConvaiTrainingOrchestrator } from './components/ConvaiTrainingOrchestra
 import { TrainingHUD } from './components/TrainingHUD'
 import { ConvaiRuntime } from './components/ConvaiRuntime'
 import { TrainingStepFeedback } from './components/TrainingStepFeedback'
+import { AssessmentOrchestrator } from './components/AssessmentOrchestrator'
+import { AssessmentEndPanel3D } from './components/3d/AssessmentEndPanel3D'
 import { BrandBadge } from './components/BrandBadge'
 import { readConvaiConfig } from './convai/config'
 
@@ -37,6 +39,7 @@ export default function App() {
             <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
                 {convaiConfig.enabled && <ConvaiRuntime config={convaiConfig} />}
                 <ConvaiTrainingOrchestrator />
+                <AssessmentOrchestrator />
                 <TrainingStepFeedback />
 
                 <button
@@ -91,6 +94,7 @@ export default function App() {
                         <TrainingGuides3D />
                         <VideoPanel3D position={[-3.6, 1.72, -1.8]} />
                         <XRControlHints3D position={[-1.55, 1.88, -0.15]} />
+                        <AssessmentEndPanel3D position={[-2.35, 1.4, -0.15]} />
                         <FpsControls canLockPointer collisionLayout={collisionLayout} />
                         <ConvaiXRMicControls />
                     </XR>

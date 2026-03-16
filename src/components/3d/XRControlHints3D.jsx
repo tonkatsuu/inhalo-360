@@ -89,6 +89,7 @@ export function XRControlHints3D(props) {
         liveHint,
         sessionPhase,
         stepProgress,
+        trainingMode,
     } = useTrainingStore()
 
     const { state: convaiState, audioControls } = useConvaiRuntime()
@@ -96,7 +97,7 @@ export function XRControlHints3D(props) {
 
     const currentStep = getStepById(currentStepId)
     const isRunning = isSessionRunning(sessionPhase)
-    const isVisible = xrMode === 'immersive-vr' && isRunning && currentStep
+    const isVisible = trainingMode !== 'assessment' && xrMode === 'immersive-vr' && isRunning && currentStep
 
     const hint = getXRHintForStep(currentStep)
 
@@ -246,6 +247,17 @@ export function XRControlHints3D(props) {
                         ● Recording...
                     </Text>
                 )}
+                {/* Locomotion Hint */}
+                <Text
+                    position={[0, -PANEL_HEIGHT / 2 + 0.03, 0.02]}
+                    fontSize={0.018}
+                    color="#4b7c91"
+                    textAlign="center"
+                    anchorX="center"
+                    anchorY="middle"
+                >
+                    Left Thumbstick = Move  |  Right Thumbstick (L/R) = Turn
+                </Text>
             </group>
         </group>
     )

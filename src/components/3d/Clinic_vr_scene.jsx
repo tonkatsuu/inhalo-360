@@ -297,23 +297,24 @@ function EnvironmentTextureShell({ scene }) {
 export function ClinicRoom({ children, convaiAvatar = null, startPanel = null, onCollisionLayoutChange = null, ...props }) {
   // Use the transformed model
   const { scene } = useGLTF('/models/clinic_vr_scene2.glb')
+  const sceneClone = useMemo(() => scene.clone(true), [scene])
 
   useEffect(() => {
-    if (!scene) return
+    if (!sceneClone) return
     // Hide any clipboard meshes baked into the exported scene.
-    scene.traverse((child) => {
+    sceneClone.traverse((child) => {
       if (child?.name && /clipboard/i.test(child.name)) {
         child.visible = false
       }
     })
-  }, [scene])
+  }, [sceneClone])
 
   const convaiAnchorPosition = useMemo(() => {
-    if (!scene) {
+    if (!sceneClone) {
       return null
     }
 
-    const tableRoot = scene.getObjectByName('TableRoot')
+    const tableRoot = sceneClone.getObjectByName('TableRoot')
     if (!tableRoot) {
       return null
     }
@@ -323,14 +324,14 @@ export function ClinicRoom({ children, convaiAvatar = null, startPanel = null, o
       CONVAI_TABLE_OFFSET[1],
       tableRoot.position.z + CONVAI_TABLE_OFFSET[2],
     ]
-  }, [scene])
+  }, [sceneClone])
 
   const startPanelAnchorPosition = useMemo(() => {
-    if (!scene) {
+    if (!sceneClone) {
       return null
     }
 
-    const tableRoot = scene.getObjectByName('TableRoot')
+    const tableRoot = sceneClone.getObjectByName('TableRoot')
     if (!tableRoot) {
       return null
     }
@@ -340,14 +341,14 @@ export function ClinicRoom({ children, convaiAvatar = null, startPanel = null, o
       tableRoot.position.y + START_PANEL_TABLE_OFFSET[1],
       tableRoot.position.z + START_PANEL_TABLE_OFFSET[2],
     ]
-  }, [scene])
+  }, [sceneClone])
 
   const collisionLayout = useMemo(() => {
-    if (!scene) {
+    if (!sceneClone) {
       return null
     }
 
-    const sceneBounds = new THREE.Box3().setFromObject(scene)
+    const sceneBounds = new THREE.Box3().setFromObject(sceneClone)
     const minX = sceneBounds.min.x + COLLISION_ROOM_PADDING.x
     const maxX = sceneBounds.max.x - COLLISION_ROOM_PADDING.x
     const minZ = sceneBounds.min.z + COLLISION_ROOM_PADDING.z
@@ -358,7 +359,7 @@ export function ClinicRoom({ children, convaiAvatar = null, startPanel = null, o
     }
 
     const obstacles = []
-    const tableRoot = scene.getObjectByName('TableRoot')
+    const tableRoot = sceneClone.getObjectByName('TableRoot')
     if (tableRoot) {
       const tableBounds = new THREE.Box3().setFromObject(tableRoot)
       tableBounds.expandByVector(
@@ -378,7 +379,7 @@ export function ClinicRoom({ children, convaiAvatar = null, startPanel = null, o
       },
       obstacles,
     }
-  }, [scene])
+  }, [sceneClone])
 
   useEffect(() => {
     if (!onCollisionLayoutChange) {
@@ -393,9 +394,9 @@ export function ClinicRoom({ children, convaiAvatar = null, startPanel = null, o
 
   return (
     <group {...props}>
-      <EnvironmentTextureShell scene={scene} />
+      <EnvironmentTextureShell scene={sceneClone} />
       {/* Render the clinic scene */}
-      <primitive object={scene} />
+      <primitive object={sceneClone} dispose={null} />
       {startPanel && startPanelAnchorPosition && (
         <group position={startPanelAnchorPosition} rotation={[-0.18, 0, 0]}>
           {startPanel}

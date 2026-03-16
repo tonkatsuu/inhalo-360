@@ -4,8 +4,9 @@ import { getStepById, useTrainingStore } from '../store/useTrainingStore'
 const TOAST_MS = 2600
 
 export function TrainingStepFeedback() {
-    const { currentStepId, isTrainingComplete, lastStepCompletion, sessionPhase } = useTrainingStore()
+    const { currentStepId, isTrainingComplete, lastStepCompletion, sessionPhase, trainingMode } = useTrainingStore()
     const [toast, setToast] = useState(null)
+    
     const prevCompletionRef = useRef(lastStepCompletion?.completedAt ?? null)
     const timeoutRef = useRef(null)
     const frameRef = useRef(null)
@@ -57,6 +58,10 @@ export function TrainingStepFeedback() {
             }
         }
     }, [currentStepId, isTrainingComplete, lastStepCompletion])
+
+    if (trainingMode === 'assessment') {
+        return null
+    }
 
     if (!toast) {
         return null
