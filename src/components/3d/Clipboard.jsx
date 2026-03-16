@@ -76,6 +76,24 @@ export function Clipboard(props) {
 
     const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
 
+    let displayedSteps = visibleSteps
+    let showTopEllipsis = false
+    let showBottomEllipsis = false
+    const MAX_ITEMS = 8
+
+    if (visibleSteps.length > MAX_ITEMS) {
+        let startIndex = Math.max(0, visibleSteps.length - MAX_ITEMS)
+        const currentIdx = visibleSteps.findIndex((s) => s.id === currentStepId)
+
+        if (currentIdx !== -1 && currentIdx < startIndex) {
+            startIndex = currentIdx
+        }
+
+        displayedSteps = visibleSteps.slice(startIndex, startIndex + MAX_ITEMS)
+        showTopEllipsis = startIndex > 0
+        showBottomEllipsis = startIndex + MAX_ITEMS < visibleSteps.length
+    }
+
     const rightController = useXRInputSourceState('controller', 'right')
     const leftController = useXRInputSourceState('controller', 'left')
 
@@ -237,7 +255,10 @@ export function Clipboard(props) {
                             <div style={{ fontSize: 12, marginBottom: 8, color: '#34515b' }}>
                                 Follow the current instruction card, then use this sheet to review the full flow.
                             </div>
-                            {visibleSteps.map((step) => (
+                            {showTopEllipsis && (
+                                <div style={{ textAlign: 'center', opacity: 0.55, margin: '2px 0', fontSize: '14px', fontWeight: 'bold', letterSpacing: '2px' }}>•••</div>
+                            )}
+                            {displayedSteps.map((step) => (
                                 <ChecklistItem
                                     key={step.id}
                                     step={step}
@@ -245,6 +266,9 @@ export function Clipboard(props) {
                                     isCurrent={currentStepId === step.id}
                                 />
                             ))}
+                            {showBottomEllipsis && (
+                                <div style={{ textAlign: 'center', opacity: 0.55, margin: '2px 0', fontSize: '14px', fontWeight: 'bold', letterSpacing: '2px' }}>•••</div>
+                            )}
                             {isTrainingComplete && (
                                 <div
                                     style={{
