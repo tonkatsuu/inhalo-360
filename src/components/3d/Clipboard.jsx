@@ -241,7 +241,7 @@ export function Clipboard(props) {
     const outlineColor = '#ffd46b'
     const boardEdges = useMemo(() => new THREE.EdgesGeometry(nodes.Mesh002.geometry), [nodes])
     const pageEdges = useMemo(() => new THREE.EdgesGeometry(nodes.page001.geometry), [nodes])
-    const highlightVisible = isHovering || isClipboardFocused
+    const highlightVisible = isHovering
 
     if (trainingMode === 'assessment') return null
 
@@ -253,7 +253,7 @@ export function Clipboard(props) {
                         <meshBasicMaterial
                             color={outlineColor}
                             transparent
-                            opacity={isClipboardFocused ? 0.28 : 0.18}
+                            opacity={0.18}
                             side={THREE.BackSide}
                             depthWrite={false}
                             toneMapped={false}
@@ -263,7 +263,7 @@ export function Clipboard(props) {
                         <meshBasicMaterial
                             color={outlineColor}
                             transparent
-                            opacity={isClipboardFocused ? 0.18 : 0.12}
+                            opacity={0.12}
                             side={THREE.BackSide}
                             depthWrite={false}
                             toneMapped={false}
