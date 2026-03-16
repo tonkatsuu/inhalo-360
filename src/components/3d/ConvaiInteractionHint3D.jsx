@@ -26,6 +26,7 @@ export function ConvaiInteractionHint3D(props) {
     const { enabled, isConfigured, state } = useConvaiRuntime()
     const sessionPhase = useTrainingStore((store) => store.sessionPhase)
     const hasReviewOpen = useTrainingStore((store) => store.hasReviewOpen)
+    const isClipboardFocused = useTrainingStore((store) => store.isClipboardFocused)
 
     const idleDotColor = useMemo(() => new THREE.Color('#67cdec'), [])
     const isXR = xrMode === 'immersive-vr'
@@ -36,6 +37,7 @@ export function ConvaiInteractionHint3D(props) {
         state?.agentState !== 'listening' &&
         state?.isThinking !== true &&
         state?.isSpeaking !== true &&
+        !isClipboardFocused &&
         !(sessionPhase === 'completed' && hasReviewOpen)
 
     const interactionCopy = isXR ? 'Hold X or Y on left controller' : 'Hold Space to talk'
