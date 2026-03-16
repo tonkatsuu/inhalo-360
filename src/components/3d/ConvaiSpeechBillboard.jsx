@@ -5,16 +5,8 @@ import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
 
-const MAX_CAPTION_LENGTH = 132
-
 function clampCaption(text) {
-    const trimmed = typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : ''
-    if (!trimmed) return ''
-    if (trimmed.length <= MAX_CAPTION_LENGTH) {
-        return trimmed
-    }
-
-    return `${trimmed.slice(0, MAX_CAPTION_LENGTH - 1).trimEnd()}…`
+    return typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : ''
 }
 
 export function ConvaiSpeechBillboard(props) {
@@ -52,7 +44,7 @@ export function ConvaiSpeechBillboard(props) {
         state?.isThinking === true ||
         state?.agentState === 'listening'
     const isRendered = isMounted || shouldBeVisible
-    const lineCount = Math.min(3, Math.max(1, Math.ceil((bodyText || '...').length / 38)))
+    const lineCount = Math.min(8, Math.max(1, Math.ceil((bodyText || '...').length / 38)))
     const bubbleHeight = 0.26 + lineCount * 0.12
     const dotColor = useMemo(() => new THREE.Color('#4ade80'), [])
     const thinkingColor = useMemo(() => new THREE.Color('#fbbf24'), [])

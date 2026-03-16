@@ -17,6 +17,11 @@ body {
   min-height: 100vh;
 }
 
+/* Hide the OS cursor while pointer is captured so only the crosshair is visible */
+body:has(canvas:focus) {
+  cursor: none;
+}
+
 #root {
   min-height: 100vh;
 }

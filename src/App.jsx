@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { XR, createXRStore } from '@react-three/xr'
 import * as THREE from 'three'
@@ -24,6 +24,38 @@ import { AssessmentEndPanel3D } from './components/3d/AssessmentEndPanel3D'
 import { BrandBadge } from './components/BrandBadge'
 import { readConvaiConfig } from './convai/config'
 
+function Crosshair() {
+    const [locked, setLocked] = useState(false)
+
+    useEffect(() => {
+        const onLockChange = () => setLocked(!!document.pointerLockElement)
+        document.addEventListener('pointerlockchange', onLockChange)
+        return () => document.removeEventListener('pointerlockchange', onLockChange)
+    }, [])
+
+    if (!locked) return null
+
+    return (
+        <div style={{
+            position: 'fixed',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 20,
+        }}>
+            <div style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: '#4ade80',
+                boxShadow: '0 0 4px rgba(0,0,0,0.8)',
+            }} />
+        </div>
+    )
+}
+
 const store = createXRStore()
 const convaiConfig = readConvaiConfig()
 const showConvaiAvatar = convaiConfig.enabled && convaiConfig.isConfigured
@@ -37,6 +69,7 @@ export default function App() {
     return (
         <ConvaiProvider config={convaiConfig}>
             <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
+                <Crosshair />
                 {convaiConfig.enabled && <ConvaiRuntime config={convaiConfig} />}
                 <ConvaiTrainingOrchestrator />
                 <AssessmentOrchestrator />

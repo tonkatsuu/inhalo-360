@@ -44,31 +44,36 @@ function ActiveConvaiRuntime({ config, isDev }) {
     const isAudioMuted = audioControls?.isAudioMuted ?? true
     const isConnected = state?.isConnected === true
 
+    // Tracks whether we are currently in a listening session so the toggle
+    // handler never relies on a stale closure over React state.
+    const isRecordingRef = useRef(false)
+
     useEffect(() => {
-        if (!isConnected) return undefined
+        if (!isConnected) {
+            // Reset toggle state whenever the connection drops.
+            isRecordingRef.current = false
+            return undefined
+        }
 
         const handleKeyDown = (event) => {
             if (event.code === 'Space' && !event.repeat) {
-                // Prevent scrolling etc if there's any
                 if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
                     event.preventDefault()
-                    startRecord()
+                    if (isRecordingRef.current) {
+                        isRecordingRef.current = false
+                        stopRecord()
+                    } else {
+                        isRecordingRef.current = true
+                        startRecord()
+                    }
                 }
             }
         }
 
-        const handleKeyUp = (event) => {
-            if (event.code === 'Space') {
-                stopRecord()
-            }
-        }
-
         window.addEventListener('keydown', handleKeyDown)
-        window.addEventListener('keyup', handleKeyUp)
 
         return () => {
             window.removeEventListener('keydown', handleKeyDown)
-            window.removeEventListener('keyup', handleKeyUp)
         }
     }, [isConnected, startRecord, stopRecord])
 

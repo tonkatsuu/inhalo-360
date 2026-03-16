@@ -81,8 +81,8 @@ export function TrainingHUD() {
         finishAssessment,
     } = useTrainingStore()
 
-    const { state: convaiState, audioControls } = useConvaiRuntime()
-    const isRecording = convaiState?.isConnected === true && audioControls?.isAudioMuted === false
+    const { state: convaiState, isMicOpen } = useConvaiRuntime()
+    const isListeningActive = convaiState?.isConnected === true && isMicOpen === true
     
     // In assessment mode, we use Web Speech API recording indicator indirectly
     const isAssessment = trainingMode === 'assessment'
@@ -133,10 +133,10 @@ export function TrainingHUD() {
                         gap: 12,
                     }}
                 >
-                    {isRecording && (
-                        <div style={{ color: '#ef4444', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
-                            RECORDING
+                    {isListeningActive && (
+                        <div style={{ color: '#22c55e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
+                            LISTENING
                         </div>
                     )}
                     {isAssessment && (
