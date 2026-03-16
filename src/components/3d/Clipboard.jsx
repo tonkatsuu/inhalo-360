@@ -52,6 +52,7 @@ export function Clipboard(props) {
     const { nodes, materials } = useGLTF('/models/clipboard.glb')
     const group = useRef()
     const [isHovering, setIsHovering] = useState(false)
+    const hoverRef = useRef(false)
 
     const camera = useThree((state) => state.camera)
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
@@ -59,6 +60,8 @@ export function Clipboard(props) {
     const focusTarget = useMemo(() => new THREE.Vector3(), [])
     const targetQuat = useMemo(() => new THREE.Quaternion(), [])
     const upVector = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+    const controllerDir = useMemo(() => new THREE.Vector3(), [])
+    const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
     const original = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: new THREE.Vector3(), captured: false })
 
     const {
@@ -94,8 +97,10 @@ export function Clipboard(props) {
         showBottomEllipsis = startIndex + MAX_ITEMS < visibleSteps.length
     }
 
+    const xrMode = useXR((state) => state.mode)
     const rightController = useXRInputSourceState('controller', 'right')
     const leftController = useXRInputSourceState('controller', 'left')
+    const activeController = rightController ?? leftController
 
     useXRControllerButtonEvent(rightController, 'xr-standard-squeeze', (state) => {
         if (state === 'pressed' && isClipboardFocused) setClipboardFocused(false)
@@ -188,13 +193,29 @@ export function Clipboard(props) {
     useFrame(() => {
         if (!group.current) return
         if (isClipboardFocused) {
-            if (isHovering) setIsHovering(false)
+            if (hoverRef.current) {
+                hoverRef.current = false
+                setIsHovering(false)
+            }
             return
         }
-        camera.getWorldDirection(forward)
-        raycaster.set(camera.position, forward)
+
+        if (xrMode === 'immersive-vr' && activeController?.object) {
+            activeController.object.updateWorldMatrix(true, false)
+            activeController.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+            raycaster.set(controllerRayPos, controllerDir)
+        } else {
+            camera.getWorldDirection(forward)
+            raycaster.set(camera.position, forward)
+        }
+
         const hits = raycaster.intersectObject(group.current, true)
-        setIsHovering(hits.length > 0)
+        const nextHover = hits.length > 0
+        if (nextHover !== hoverRef.current) {
+            hoverRef.current = nextHover
+            setIsHovering(nextHover)
+        }
     })
 
     const handleFocus = () => {
@@ -220,22 +241,46 @@ export function Clipboard(props) {
     const outlineColor = '#ffd46b'
     const boardEdges = useMemo(() => new THREE.EdgesGeometry(nodes.Mesh002.geometry), [nodes])
     const pageEdges = useMemo(() => new THREE.EdgesGeometry(nodes.page001.geometry), [nodes])
+    const highlightVisible = isHovering || isClipboardFocused
 
     if (trainingMode === 'assessment') return null
 
     return (
         <group ref={group} {...props} dispose={null} onClick={handleFocus} onContextMenu={handleReturn}>
             <group position={[0, 0, 0]} rotation={[-Math.PI, 0, 0]} scale={0.009}>
+                <group visible={highlightVisible} scale={1.03}>
+                    <mesh geometry={nodes.Mesh002.geometry} renderOrder={20}>
+                        <meshBasicMaterial
+                            color={outlineColor}
+                            transparent
+                            opacity={isClipboardFocused ? 0.28 : 0.18}
+                            side={THREE.BackSide}
+                            depthWrite={false}
+                            toneMapped={false}
+                        />
+                    </mesh>
+                    <mesh geometry={nodes.page001.geometry} position={[0, -200, -730]} renderOrder={20}>
+                        <meshBasicMaterial
+                            color={outlineColor}
+                            transparent
+                            opacity={isClipboardFocused ? 0.18 : 0.12}
+                            side={THREE.BackSide}
+                            depthWrite={false}
+                            toneMapped={false}
+                        />
+                    </mesh>
+                </group>
+
                 <mesh geometry={nodes.Mesh002.geometry} material={materials['board.001']} />
-                <lineSegments geometry={boardEdges} visible={isHovering || isClipboardFocused}>
-                    <lineBasicMaterial color={outlineColor} linewidth={5} depthTest={false} />
+                <lineSegments geometry={boardEdges} visible={highlightVisible} renderOrder={21}>
+                    <lineBasicMaterial color={outlineColor} linewidth={5} depthTest={false} toneMapped={false} />
                 </lineSegments>
 
                 <mesh geometry={nodes.Mesh002_1.geometry} material={materials['metal.001']} />
 
                 <mesh geometry={nodes.page001.geometry} material={blankPageMaterial} position={[0, -200, -730]}>
-                    <lineSegments geometry={pageEdges} visible={isHovering || isClipboardFocused}>
-                        <lineBasicMaterial color={outlineColor} linewidth={5} depthTest={false} />
+                    <lineSegments geometry={pageEdges} visible={highlightVisible} renderOrder={21}>
+                        <lineBasicMaterial color={outlineColor} linewidth={5} depthTest={false} toneMapped={false} />
                     </lineSegments>
 
                     <Html transform occlude={false} position={[0, 0, 2]} rotation={[Math.PI / 2, 0, 0]} distanceFactor={10000} zIndexRange={[0, 0]}>

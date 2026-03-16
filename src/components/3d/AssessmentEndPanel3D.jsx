@@ -9,9 +9,12 @@ import { isSessionRunning } from '../../training/engine'
 const WIDTH = 0.38
 const HEIGHT = 0.1
 const DEPTH = 0.025
+const BRANCH_OFFSET_X = -0.78
+const BRANCH_OFFSET_Y = -0.02
+const BRANCH_OFFSET_Z = 0.02
 
 export function AssessmentEndPanel3D(props) {
-    const { trainingMode, sessionPhase, finishAssessment } = useTrainingStore()
+    const { trainingMode, sessionPhase, currentStepId, finishAssessment } = useTrainingStore()
     const [hovered, setHovered] = useState(false)
     const hoverRef = useRef(false)
     const root = useRef()
@@ -29,8 +32,9 @@ export function AssessmentEndPanel3D(props) {
     const activeController = rightController ?? leftController
 
     const isVisible = trainingMode === 'assessment' && isSessionRunning(sessionPhase)
+    const shouldAvoidBranchPanel = sessionPhase === 'branching' && currentStepId === 'second_dose_decision'
 
-    useFrame(() => {
+    useFrame((_state, delta) => {
         if (!root.current) return
         if (!isVisible) {
             hoverRef.current = false
@@ -39,6 +43,25 @@ export function AssessmentEndPanel3D(props) {
             }
             return
         }
+
+        root.current.position.x = THREE.MathUtils.damp(
+            root.current.position.x,
+            shouldAvoidBranchPanel ? BRANCH_OFFSET_X : 0,
+            8,
+            delta,
+        )
+        root.current.position.y = THREE.MathUtils.damp(
+            root.current.position.y,
+            shouldAvoidBranchPanel ? BRANCH_OFFSET_Y : 0,
+            8,
+            delta,
+        )
+        root.current.position.z = THREE.MathUtils.damp(
+            root.current.position.z,
+            shouldAvoidBranchPanel ? BRANCH_OFFSET_Z : 0,
+            8,
+            delta,
+        )
 
         lookTarget.current.copy(camera.position)
         root.current.lookAt(lookTarget.current)
@@ -91,28 +114,30 @@ export function AssessmentEndPanel3D(props) {
     if (!isVisible) return null
 
     return (
-        <group {...props} ref={root}>
-            <RoundedBox 
-                ref={buttonRef} 
-                args={[WIDTH, HEIGHT, DEPTH]} 
-                radius={0.03} 
-                onClick={handleClick}
-            >
-                <meshStandardMaterial 
-                    color={hovered ? '#ef4444' : '#b91c1c'} 
-                    transparent 
-                    opacity={0.9} 
-                />
-            </RoundedBox>
-            <Text
-                position={[0, 0, 0.02]}
-                fontSize={0.026}
-                color="#ffffff"
-                anchorX="center"
-                anchorY="middle"
-            >
-                End Assessment
-            </Text>
+        <group {...props}>
+            <group ref={root}>
+                <RoundedBox
+                    ref={buttonRef}
+                    args={[WIDTH, HEIGHT, DEPTH]}
+                    radius={0.03}
+                    onClick={handleClick}
+                >
+                    <meshStandardMaterial
+                        color={hovered ? '#ef4444' : '#b91c1c'}
+                        transparent
+                        opacity={0.9}
+                    />
+                </RoundedBox>
+                <Text
+                    position={[0, 0, 0.02]}
+                    fontSize={0.026}
+                    color="#ffffff"
+                    anchorX="center"
+                    anchorY="middle"
+                >
+                    End Assessment
+                </Text>
+            </group>
         </group>
     )
 }

@@ -31,6 +31,7 @@ export function Inhaler(props) {
     const group = useRef()
     const lastPos = useRef(new THREE.Vector3())
     const [isHovering, setIsHovering] = useState(false)
+    const hoverRef = useRef(false)
     const materialState = useRef(new Map())
     const isPointerDown = useRef(false)
     const hasAutoPressed = useRef(false)
@@ -54,12 +55,15 @@ export function Inhaler(props) {
     const camForward = useMemo(() => new THREE.Vector3(), [])
     const camUp = useMemo(() => new THREE.Vector3(), [])
     const camRight = useMemo(() => new THREE.Vector3(), [])
+    const controllerDir = useMemo(() => new THREE.Vector3(), [])
+    const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
     const controllerPos = useMemo(() => new THREE.Vector3(), [])
     const controllerQuat = useMemo(() => new THREE.Quaternion(), [])
     const holdOffset = useMemo(() => new THREE.Vector3(0.018, -0.045, -0.035), [])
     // Flip inhaler upside-down so controller grip maps to real inhaler hold (mouthpiece toward face, canister at top)
     const holdQuatOffset = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, Math.PI, 0)), [])
-    const highlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
+    const hoverHighlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
+    const promptHighlightColor = useMemo(() => new THREE.Color('#7dd3fc'), [])
     const axesCache = useMemo(
         () => ({
             x: new THREE.Vector3(),
@@ -92,6 +96,8 @@ export function Inhaler(props) {
 
     const currentStep = getStepById(currentStepId)
     const isXRInput = xrMode === 'immersive-vr' && activeController?.object
+    const isTargeted = isHovering
+    const isPromptedStep = !isInhalerFocused && ['capState', 'shake', 'inhalePress', 'mouthSeal'].includes(currentStep?.validatorType)
 
     const recordBeforeStartMistake = useCallback(() => {
         recordMistake({
@@ -251,14 +257,18 @@ export function Inhaler(props) {
     }, [isInhalerFocused])
 
     useEffect(() => {
-        const shouldHighlight = isHovering || isInhalerFocused || ['capState', 'shake', 'inhalePress', 'mouthSeal'].includes(currentStep?.validatorType)
         materialState.current.forEach((originalState, material) => {
             if (!material) return
-            if (shouldHighlight) {
+            if (isTargeted) {
                 if (material.emissive) {
-                    material.emissive.copy(highlightColor)
+                    material.emissive.copy(hoverHighlightColor)
                 }
-                material.emissiveIntensity = isInhalerFocused ? 0.95 : 0.55
+                material.emissiveIntensity = 0.42
+            } else if (isPromptedStep) {
+                if (material.emissive) {
+                    material.emissive.copy(promptHighlightColor)
+                }
+                material.emissiveIntensity = 0.12
             } else {
                 if (material.emissive && originalState.emissive) {
                     material.emissive.copy(originalState.emissive)
@@ -266,7 +276,7 @@ export function Inhaler(props) {
                 material.emissiveIntensity = originalState.emissiveIntensity
             }
         })
-    }, [currentStep?.validatorType, highlightColor, isHovering, isInhalerFocused])
+    }, [hoverHighlightColor, isInhalerFocused, isPromptedStep, isTargeted, promptHighlightColor])
 
     useFrame((_state, delta) => {
         if (!group.current) return
@@ -386,16 +396,29 @@ export function Inhaler(props) {
     useFrame(() => {
         if (!group.current) return
         if (isInhalerFocused) {
-            if (isHovering) setIsHovering(false)
+            if (hoverRef.current) {
+                hoverRef.current = false
+                setIsHovering(false)
+            }
             return
         }
-        if (xrMode === 'immersive-vr') {
-            return
+
+        if (xrMode === 'immersive-vr' && activeController?.object) {
+            activeController.object.updateWorldMatrix(true, false)
+            activeController.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+            raycaster.set(controllerRayPos, controllerDir)
+        } else {
+            camera.getWorldDirection(forward)
+            raycaster.set(camera.position, forward)
         }
-        camera.getWorldDirection(forward)
-        raycaster.set(camera.position, forward)
+
         const hits = raycaster.intersectObject(group.current, true)
-        setIsHovering(hits.length > 0)
+        const nextHover = hits.length > 0
+        if (nextHover !== hoverRef.current) {
+            hoverRef.current = nextHover
+            setIsHovering(nextHover)
+        }
     })
 
     const handleReturn = (event) => {
@@ -424,6 +447,55 @@ export function Inhaler(props) {
             onClick={handleClick}
             onContextMenu={handleReturn}
         >
+            <group visible={isTargeted} scale={1.045}>
+                <mesh geometry={nodes.mesh_0.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.12}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+                <mesh geometry={nodes.mesh_0_1.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.1}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+                <mesh geometry={nodes.mesh_0_15.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.1}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+                <mesh
+                    geometry={nodes.mesh_0_55.geometry}
+                    rotation={[-1.864, 0, 0]}
+                    scale={0.91}
+                    visible={!isCapOff}
+                    renderOrder={20}
+                >
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.1}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+            </group>
+
             <mesh geometry={nodes.mesh_0.geometry} material={materials.matalparts} rotation={[-1.864, 0, 0]} scale={0.91} />
             <mesh geometry={nodes.mesh_0_1.geometry} material={materials.tankinfo} rotation={[-1.864, 0, 0]} scale={0.91} />
             <mesh geometry={nodes.mesh_0_15.geometry} material={materials.lightblue} rotation={[-1.864, 0, 0]} scale={0.91} />
