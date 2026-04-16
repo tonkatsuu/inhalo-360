@@ -5,6 +5,7 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 0.76
 const PANEL_HEIGHT = 0.22
@@ -23,6 +24,7 @@ export function ConvaiInteractionHint3D(props) {
     const floatTimeRef = useRef(0)
 
     const xrMode = useXR((state) => state.mode)
+    const { handsOnly } = useXRHardwareState()
     const { enabled, isConfigured, state } = useConvaiRuntime()
     const sessionPhase = useTrainingStore((store) => store.sessionPhase)
     const hasReviewOpen = useTrainingStore((store) => store.hasReviewOpen)
@@ -40,7 +42,7 @@ export function ConvaiInteractionHint3D(props) {
         !isClipboardFocused &&
         !(sessionPhase === 'completed' && hasReviewOpen)
 
-    const interactionCopy = isXR ? 'Hold X or Y on left controller' : 'Hold Space to talk'
+    const interactionCopy = isXR ? (handsOnly ? 'Controllers required to talk' : 'Hold X or Y on left controller') : 'Hold Space to talk'
 
     useFrame((_state, delta) => {
         if (!group.current) {

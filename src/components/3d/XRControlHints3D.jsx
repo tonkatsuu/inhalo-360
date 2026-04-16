@@ -6,14 +6,26 @@ import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 0.72
 const PANEL_HEIGHT = 0.42
 const FLOAT_AMPLITUDE = 0.006
+const HUD_DISTANCE = 1.35
+const HUD_LATERAL_OFFSET = 0.42
+const HUD_VERTICAL_OFFSET = -0.02
+const HUD_FOLLOW_SPEED = 5
 
-function getXRHintForStep(step) {
+function getXRHintForStep(step, handsOnly) {
     if (!step) {
         return { action: '', detail: '' }
+    }
+
+    if (handsOnly) {
+        return {
+            action: 'Hands can select menus',
+            detail: 'Controllers are still required for inhaler actions, breathing inputs, and push-to-talk in this build.',
+        }
     }
 
     switch (step.validatorType) {
@@ -43,8 +55,8 @@ function getXRHintForStep(step) {
             }
         case 'breathOut':
             return {
-                action: 'Thumbstick ↓ or A = Exhale',
-                detail: 'Push the thumbstick down or press A to simulate breathing out.',
+                action: 'Thumbstick Down or A = Exhale',
+                detail: 'Push the thumbstick down or press A and keep exhaling gently until the step fills.',
             }
         case 'mouthSeal':
             return {
@@ -53,12 +65,12 @@ function getXRHintForStep(step) {
             }
         case 'inhalePress':
             return {
-                action: 'Thumbstick ↑ = Inhale, then Trigger',
-                detail: 'Push thumbstick up to inhale, then pull the trigger to press the canister.',
+                action: 'Thumbstick Up, then Trigger',
+                detail: 'Hold thumbstick up to start a slow inhale, wait a moment, press Trigger once, then keep inhaling briefly.',
             }
         case 'holdBreath':
             return {
-                action: 'Press B = Hold breath',
+                action: 'Press and Hold B',
                 detail: 'Press and hold the B button to hold your breath steadily.',
             }
         case 'branchChoice':
@@ -74,7 +86,7 @@ function getXRHintForStep(step) {
     }
 }
 
-export function XRControlHints3D(props) {
+export function XRControlHints3D() {
     const root = useRef()
     const glassMat = useRef()
     const borderMat = useRef()
@@ -82,8 +94,13 @@ export function XRControlHints3D(props) {
 
     const camera = useThree((state) => state.camera)
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const hudTarget = useMemo(() => new THREE.Vector3(), [])
+    const tempForward = useMemo(() => new THREE.Vector3(), [])
+    const tempRight = useMemo(() => new THREE.Vector3(), [])
+    const tempUp = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
+    const { handsOnly } = useXRHardwareState()
     const {
         currentStepId,
         liveHint,
@@ -99,7 +116,10 @@ export function XRControlHints3D(props) {
     const isRunning = isSessionRunning(sessionPhase)
     const isVisible = trainingMode !== 'assessment' && xrMode === 'immersive-vr' && isRunning && currentStep
 
-    const hint = getXRHintForStep(currentStep)
+    const hint = getXRHintForStep(currentStep, handsOnly)
+    const isShakeStep = currentStep?.validatorType === 'shake'
+    const progressValue = Math.max(0, Math.min(1, stepProgress ?? 0))
+    const progressPercent = Math.round(progressValue * 100)
 
     useFrame((_state, delta) => {
         if (!root.current || !isVisible) {
@@ -107,9 +127,18 @@ export function XRControlHints3D(props) {
         }
 
         floatTime.current += delta
-        root.current.position.y = Math.sin(floatTime.current * 1.4) * FLOAT_AMPLITUDE
+        camera.getWorldPosition(lookTarget)
+        camera.getWorldDirection(tempForward)
+        tempUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize()
+        tempRight.crossVectors(tempForward, tempUp).normalize()
 
-        lookTarget.copy(camera.position)
+        hudTarget
+            .copy(lookTarget)
+            .add(tempForward.multiplyScalar(HUD_DISTANCE))
+            .add(tempRight.multiplyScalar(-HUD_LATERAL_OFFSET))
+            .add(tempUp.multiplyScalar(HUD_VERTICAL_OFFSET + Math.sin(floatTime.current * 1.4) * FLOAT_AMPLITUDE))
+
+        root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
         root.current.lookAt(lookTarget)
 
         if (glassMat.current) {
@@ -125,8 +154,7 @@ export function XRControlHints3D(props) {
     }
 
     return (
-        <group {...props}>
-            <group ref={root}>
+        <group ref={root}>
                 {/* Border */}
                 <RoundedBox
                     args={[PANEL_WIDTH + 0.04, PANEL_HEIGHT + 0.04, 0.02]}
@@ -215,14 +243,28 @@ export function XRControlHints3D(props) {
                 </mesh>
 
                 {/* Progress bar fill */}
-                <mesh position={[-0.28 + (0.56 * Math.max(0, Math.min(1, stepProgress ?? 0))) / 2, -0.135, 0.025]}>
-                    <planeGeometry args={[0.56 * Math.max(0.001, Math.min(1, stepProgress ?? 0)), 0.028]} />
-                    <meshBasicMaterial color="#22c55e" transparent opacity={0.85} />
+                <mesh position={[-0.28 + (0.56 * progressValue) / 2, -0.135, 0.025]}>
+                    <planeGeometry args={[0.56 * Math.max(0.001, progressValue), 0.028]} />
+                    <meshBasicMaterial color={isShakeStep ? '#f59e0b' : '#22c55e'} transparent opacity={0.85} />
                 </mesh>
+
+                {isShakeStep && (
+                    <Text
+                        position={[0, -0.095, 0.02]}
+                        fontSize={0.02}
+                        maxWidth={0.62}
+                        textAlign="center"
+                        anchorX="center"
+                        anchorY="middle"
+                        color="#f8d38c"
+                    >
+                        {`Shake progress ${progressPercent}%`}
+                    </Text>
+                )}
 
                 {/* Step label */}
                 <Text
-                    position={[0, -0.175, 0.02]}
+                    position={[0, isShakeStep ? -0.185 : -0.175, 0.02]}
                     fontSize={0.019}
                     maxWidth={0.62}
                     textAlign="center"
@@ -256,9 +298,8 @@ export function XRControlHints3D(props) {
                     anchorX="center"
                     anchorY="middle"
                 >
-                    Left Thumbstick = Move  |  Right Thumbstick (L/R) = Turn
+                    {handsOnly ? 'Hands: menu selection only  |  Controllers needed for full training' : 'Left Thumbstick = Move  |  Right Thumbstick (L/R) = Turn'}
                 </Text>
-            </group>
         </group>
     )
 }

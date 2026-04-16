@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html, useGLTF } from '@react-three/drei'
-import { useXR, useXRControllerButtonEvent, useXRInputSourceState } from '@react-three/xr'
+import { useXR, useXRControllerButtonEvent, useXRInputSourceEvent } from '@react-three/xr'
 import * as THREE from 'three'
 import { getVisibleTrainingSteps, useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
 import { isFromOverlayElement } from '../../utils/dom'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const MOVE_SPEED = 30
 const ROTATE_SPEED = 40
@@ -99,9 +100,7 @@ export function Clipboard(props) {
     }
 
     const xrMode = useXR((state) => state.mode)
-    const rightController = useXRInputSourceState('controller', 'right')
-    const leftController = useXRInputSourceState('controller', 'left')
-    const activeController = rightController ?? leftController
+    const { rightController, leftController, activePointerSource } = useXRHardwareState()
 
     useXRControllerButtonEvent(rightController, 'xr-standard-squeeze', (state) => {
         if (state === 'pressed' && isClipboardFocused) setClipboardFocused(false)
@@ -109,6 +108,34 @@ export function Clipboard(props) {
     useXRControllerButtonEvent(leftController, 'xr-standard-squeeze', (state) => {
         if (state === 'pressed' && isClipboardFocused) setClipboardFocused(false)
     })
+
+    useXRInputSourceEvent('all', 'selectstart', (event) => {
+        if (xrMode !== 'immersive-vr' || event.inputSource.hand == null) {
+            return
+        }
+
+        if (isClipboardFocused) {
+            setClipboardFocused(false)
+            return
+        }
+
+        if (!hoverRef.current) {
+            return
+        }
+
+        if (!isSessionRunning(sessionPhase)) {
+            recordMistake({
+                stepId: currentStepId,
+                code: 'attempt_action_before_start',
+                message: 'The checklist was opened before the training session was started.',
+                correction: 'Press Start Training first, then follow the guided checklist.',
+            })
+            return
+        }
+
+        setInhalerFocused(false)
+        setClipboardFocused(true)
+    }, [currentStepId, isClipboardFocused, recordMistake, sessionPhase, setClipboardFocused, setInhalerFocused, xrMode])
 
     useEffect(() => {
         // Reset the captured flag when props change so the resting position
@@ -204,10 +231,10 @@ export function Clipboard(props) {
             return
         }
 
-        if (xrMode === 'immersive-vr' && activeController?.object) {
-            activeController.object.updateWorldMatrix(true, false)
-            activeController.object.getWorldPosition(controllerRayPos)
-            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+        if (xrMode === 'immersive-vr' && activePointerSource?.object) {
+            activePointerSource.object.updateWorldMatrix(true, false)
+            activePointerSource.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activePointerSource.object.quaternion)
             raycaster.set(controllerRayPos, controllerDir)
         } else {
             camera.getWorldDirection(forward)

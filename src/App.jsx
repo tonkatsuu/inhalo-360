@@ -60,7 +60,9 @@ function Crosshair() {
 const store = createXRStore()
 const convaiConfig = readConvaiConfig()
 const showConvaiAvatar = convaiConfig.enabled && convaiConfig.isConfigured
-const XR_WORLD_SCALE = 2.0
+const XR_WORLD_SCALE = 1.8
+const XR_SPAWN_POSITION = [-2.35, 0, 1.15]
+const XR_SPAWN_ROTATION_Y = 0
 
 function ActiveVRLocomotion({ originRef }) {
     const xrMode = useXR((state) => state.mode)
@@ -77,6 +79,27 @@ export default function App() {
     const xrOriginRef = useRef(null)
     const handleCollisionLayoutChange = useCallback((nextLayout) => {
         setCollisionLayout(nextLayout)
+    }, [])
+
+    useEffect(() => {
+        const unsubscribe = store.subscribe((state, prevState) => {
+            if (state.mode !== 'immersive-vr' || prevState.mode === 'immersive-vr') {
+                return
+            }
+
+            const origin = xrOriginRef.current
+            if (!origin) {
+                return
+            }
+
+            origin.position.set(...XR_SPAWN_POSITION)
+            origin.rotation.set(0, XR_SPAWN_ROTATION_Y, 0)
+            origin.scale.setScalar(XR_WORLD_SCALE)
+        })
+
+        return () => {
+            unsubscribe()
+        }
     }, [])
 
     return (
@@ -112,7 +135,7 @@ export default function App() {
                     <XR store={store}>
                         <XROrigin
                             ref={xrOriginRef}
-                            position={[-2.162, 0, 1.058]}
+                            position={XR_SPAWN_POSITION}
                             scale={[XR_WORLD_SCALE, XR_WORLD_SCALE, XR_WORLD_SCALE]}
                         />
                         <color attach="background" args={['#e9dfcf']} />
@@ -139,9 +162,9 @@ export default function App() {
                             <Inhaler position={[-2.8, 1.02, -0.5]} rotation={[Math.PI, Math.PI / 2, Math.PI / 2]} scale={0.002} />
                             <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
                         </ClinicRoom>
-                        <TrainingStartPanel3D position={[-2.35, 1.7, -0.32]} />
-                        <TrainingBranchPanel3D position={[-2.35, 1.62, -0.25]} />
-                        <TrainingReviewPanel3D position={[-2.35, 1.78, -0.42]} />
+                        <TrainingStartPanel3D position={[-2.35, 1.7, -0.62]} />
+                        <TrainingBranchPanel3D position={[-2.35, 1.62, -0.55]} />
+                        <TrainingReviewPanel3D position={[-2.35, 1.78, -0.72]} />
                         <TrainingGuides3D />
                         <VideoPanel3D position={[-3.6, 1.72, -1.8]} />
                         <XRControlHints3D position={[-1.55, 1.88, -0.15]} />

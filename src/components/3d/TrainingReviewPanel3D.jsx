@@ -1,12 +1,13 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useXR, useXRInputSourceState } from '@react-three/xr'
+import { useXR } from '@react-three/xr'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { buildAssessmentResults } from '../../training/assessment'
 import { BrandChip3D } from './BrandChip3D'
 import { useHoverSelectAction } from './useHoverSelectAction'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 1.34
 const PANEL_HEIGHT = 1.12
@@ -54,9 +55,7 @@ export function TrainingReviewPanel3D(props) {
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
-    const rightController = useXRInputSourceState('controller', 'right')
-    const leftController = useXRInputSourceState('controller', 'left')
-    const activeController = rightController ?? leftController
+    const { activePointerSource } = useXRHardwareState()
 
     const { 
         sessionPhase, 
@@ -146,13 +145,16 @@ export function TrainingReviewPanel3D(props) {
         root.current.scale.setScalar(scale)
         floatTimeRef.current += delta
         root.current.position.y = 0.03 + Math.sin(floatTimeRef.current * 1.4) * FLOAT_AMPLITUDE
-        lookTarget.copy(camera.position)
+        camera.getWorldPosition(lookTarget)
+        if (root.current.parent) {
+            root.current.parent.worldToLocal(lookTarget)
+        }
         root.current.lookAt(lookTarget)
 
-        if (xrMode === 'immersive-vr' && activeController?.object) {
-            activeController.object.updateWorldMatrix(true, false)
-            activeController.object.getWorldPosition(controllerRayPos)
-            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+        if (xrMode === 'immersive-vr' && activePointerSource?.object) {
+            activePointerSource.object.updateWorldMatrix(true, false)
+            activePointerSource.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activePointerSource.object.quaternion)
             raycaster.set(controllerRayPos, controllerDir)
         } else {
             camera.getWorldDirection(forward)

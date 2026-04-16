@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
-import { useXR, useXRControllerButtonEvent, useXRInputSourceState } from '@react-three/xr'
+import { useXR, useXRControllerButtonEvent, useXRInputSourceEvent } from '@react-three/xr'
 import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { isFromOverlayElement } from '../../utils/dom'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const MOVE_SPEED = 12
 const ROTATE_SPEED = 12
@@ -13,6 +14,8 @@ const STABILITY_SPEED_MAX = 1.1
 const MOUTH_OFFSET = new THREE.Vector3(0, -0.06, -0.12)
 const DESKTOP_INSPECT_OFFSET = new THREE.Vector3(0.2, -0.16, -0.62)
 const DESKTOP_MOUTH_OFFSET = new THREE.Vector3(0.05, -0.08, -0.26)
+const INHALER_MESH_ROTATION = new THREE.Euler(-1.864, 0, 0)
+const INHALER_MESH_SCALE = 0.91
 
 function getUprightScore(quaternion, axesCache) {
     axesCache.x.set(1, 0, 0).applyQuaternion(quaternion)
@@ -29,9 +32,12 @@ function getUprightScore(quaternion, axesCache) {
 export function Inhaler(props) {
     const { nodes, materials } = useGLTF('/models/inhaler-transformed.glb')
     const group = useRef()
+    const capMeshRef = useRef()
     const lastPos = useRef(new THREE.Vector3())
     const [isHovering, setIsHovering] = useState(false)
+    const [isCapHovered, setIsCapHovered] = useState(false)
     const hoverRef = useRef(false)
+    const capHoverHandednessRef = useRef(null)
     const materialState = useRef(new Map())
     const isPointerDown = useRef(false)
     const hasAutoPressed = useRef(false)
@@ -45,6 +51,10 @@ export function Inhaler(props) {
         shakeSpeed: 0,
     })
     const actionLockRef = useRef(false)
+    const focusSourceRef = useRef({
+        type: null,
+        handedness: null,
+    })
 
     const camera = useThree((state) => state.camera)
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
@@ -55,10 +65,14 @@ export function Inhaler(props) {
     const camForward = useMemo(() => new THREE.Vector3(), [])
     const camUp = useMemo(() => new THREE.Vector3(), [])
     const camRight = useMemo(() => new THREE.Vector3(), [])
+    const cameraWorldPos = useMemo(() => new THREE.Vector3(), [])
+    const cameraWorldQuat = useMemo(() => new THREE.Quaternion(), [])
+    const headEuler = useMemo(() => new THREE.Euler(), [])
     const controllerDir = useMemo(() => new THREE.Vector3(), [])
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
     const controllerPos = useMemo(() => new THREE.Vector3(), [])
     const controllerQuat = useMemo(() => new THREE.Quaternion(), [])
+    const mouthpieceWorld = useMemo(() => new THREE.Vector3(), [])
     const holdOffset = useMemo(() => new THREE.Vector3(0.018, -0.045, -0.035), [])
     // Flip inhaler upside-down so controller grip maps to real inhaler hold (mouthpiece toward face, canister at top)
     const holdQuatOffset = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, Math.PI, 0)), [])
@@ -73,11 +87,29 @@ export function Inhaler(props) {
         }),
         [],
     )
+    const mouthpieceLocalOffset = useMemo(() => {
+        const geometry = nodes.mesh_0_55.geometry
+        if (!geometry.boundingBox) {
+            geometry.computeBoundingBox()
+        }
+
+        const localOffset = new THREE.Vector3()
+        geometry.boundingBox?.getCenter(localOffset)
+        localOffset.applyEuler(INHALER_MESH_ROTATION)
+        localOffset.multiplyScalar(INHALER_MESH_SCALE)
+        return localOffset
+    }, [nodes])
 
     const xrMode = useXR((state) => state.mode)
-    const rightController = useXRInputSourceState('controller', 'right')
-    const leftController = useXRInputSourceState('controller', 'left')
-    const activeController = rightController ?? leftController
+    const {
+        activeController,
+        activeHand,
+        activePointerSource,
+        leftController,
+        rightController,
+        leftHand,
+        rightHand,
+    } = useXRHardwareState()
 
     const {
         currentStepId,
@@ -96,7 +128,6 @@ export function Inhaler(props) {
     } = useTrainingStore()
 
     const currentStep = getStepById(currentStepId)
-    const isXRInput = xrMode === 'immersive-vr' && activeController?.object
     const isTargeted = isHovering
     const isPromptedStep = !isInhalerFocused && ['capState', 'shake', 'inhalePress', 'mouthSeal'].includes(currentStep?.validatorType)
 
@@ -127,6 +158,16 @@ export function Inhaler(props) {
         dispatchTrainingAction({ type: 'press-canister' })
     }, [currentStep, dispatchTrainingAction, setCapOff, setLastUserAction])
 
+    const focusInhaler = useCallback((type, handedness = null) => {
+        focusSourceRef.current = { type, handedness }
+        setInhalerFocused(true)
+    }, [setInhalerFocused])
+
+    const releaseInhaler = useCallback(() => {
+        focusSourceRef.current = { type: null, handedness: null }
+        setInhalerFocused(false)
+    }, [setInhalerFocused])
+
     useXRControllerButtonEvent(activeController, 'xr-standard-trigger', (state) => {
         if (state !== 'pressed') {
             actionLockRef.current = false
@@ -139,12 +180,82 @@ export function Inhaler(props) {
 
         actionLockRef.current = true
         if (!isInhalerFocused) {
-            setInhalerFocused(true)
+            focusInhaler('controller', activeController?.inputSource.handedness ?? null)
             return
         }
 
         attemptPrimaryAction()
     })
+
+    useXRControllerButtonEvent(rightController, 'xr-standard-squeeze', (state) => {
+        if (
+            state === 'pressed' &&
+            isInhalerFocused &&
+            focusSourceRef.current.type === 'controller'
+        ) {
+            releaseInhaler()
+        }
+    })
+
+    useXRControllerButtonEvent(leftController, 'xr-standard-squeeze', (state) => {
+        if (
+            state === 'pressed' &&
+            isInhalerFocused &&
+            focusSourceRef.current.type === 'controller'
+        ) {
+            releaseInhaler()
+        }
+    })
+
+    useXRInputSourceEvent('all', 'selectstart', (event) => {
+        if (xrMode !== 'immersive-vr' || event.inputSource.hand == null) {
+            return
+        }
+
+        if (
+            isInhalerFocused &&
+            currentStep?.validatorType === 'capState' &&
+            capHoverHandednessRef.current === event.inputSource.handedness
+        ) {
+            attemptPrimaryAction()
+            return
+        }
+
+        if (!isInhalerFocused && hoverRef.current) {
+            if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') {
+                recordBeforeStartMistake()
+                return
+            }
+
+            setClipboardFocused(false)
+            focusInhaler('hand', event.inputSource.handedness)
+            return
+        }
+
+        if (isInhalerFocused && ['capState', 'inhalePress'].includes(currentStep?.validatorType)) {
+            attemptPrimaryAction()
+        }
+    }, [attemptPrimaryAction, currentStep?.validatorType, focusInhaler, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setClipboardFocused, xrMode])
+
+    useXRInputSourceEvent('all', 'squeezestart', (event) => {
+        if (
+            xrMode !== 'immersive-vr' ||
+            event.inputSource.hand == null ||
+            !isInhalerFocused ||
+            focusSourceRef.current.type !== 'hand'
+        ) {
+            return
+        }
+
+        if (
+            focusSourceRef.current.handedness != null &&
+            focusSourceRef.current.handedness !== event.inputSource.handedness
+        ) {
+            return
+        }
+
+        releaseInhaler()
+    }, [isInhalerFocused, releaseInhaler, xrMode])
 
     useEffect(() => {
         // Reset the captured flag when props change so the resting position
@@ -171,12 +282,18 @@ export function Inhaler(props) {
     }, [nodes, materials])
 
     useEffect(() => {
+        if (!isInhalerFocused) {
+            focusSourceRef.current = { type: null, handedness: null }
+        }
+    }, [isInhalerFocused])
+
+    useEffect(() => {
         const handleGlobalDrop = (event) => {
             if (isFromOverlayElement(event.target)) return
             if (!isInhalerFocused) return
             if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') return
             event.preventDefault()
-            setInhalerFocused(false)
+            releaseInhaler()
         }
 
         const handleGlobalPointerDown = (event) => {
@@ -195,14 +312,14 @@ export function Inhaler(props) {
                 if (xrMode !== 'immersive-vr') {
                     setClipboardFocused(false)
                 }
-                setInhalerFocused(true)
+                focusInhaler('desktop')
                 return
             }
 
             if (event.button === 2) {
                 if (isInhalerFocused) {
                     event.preventDefault()
-                    setInhalerFocused(false)
+                    releaseInhaler()
                 }
                 return
             }
@@ -235,7 +352,7 @@ export function Inhaler(props) {
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
             window.removeEventListener('pointerup', handleGlobalPointerUp)
         }
-    }, [attemptPrimaryAction, currentStep?.validatorType, isHovering, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setInhalerFocused, setClipboardFocused, xrMode])
+    }, [attemptPrimaryAction, currentStep?.validatorType, focusInhaler, isHovering, isInhalerFocused, recordBeforeStartMistake, releaseInhaler, sessionPhase, setClipboardFocused, xrMode])
 
     useEffect(() => {
         const handleMouseMove = (event) => {
@@ -297,24 +414,44 @@ export function Inhaler(props) {
 
         const alphaMove = 1 - Math.exp(-MOVE_SPEED * delta)
         const alphaRotate = 1 - Math.exp(-ROTATE_SPEED * delta)
-        const usingXRController = Boolean(isXRInput && isInhalerFocused)
-        const desktopPointerDown = isPointerDown.current && !usingXRController && isInhalerFocused
+        const focusedXRSource =
+            focusSourceRef.current.type === 'controller'
+                ? (
+                    focusSourceRef.current.handedness === 'left'
+                        ? leftController
+                        : focusSourceRef.current.handedness === 'right'
+                            ? rightController
+                            : activeController
+                )
+                : focusSourceRef.current.type === 'hand'
+                    ? (
+                        focusSourceRef.current.handedness === 'left'
+                            ? leftHand
+                            : focusSourceRef.current.handedness === 'right'
+                                ? rightHand
+                                : activeHand
+                    )
+                    : undefined
+        const usingXRInputSource = Boolean(isInhalerFocused && focusedXRSource?.object)
+        const desktopPointerDown = isPointerDown.current && !usingXRInputSource && isInhalerFocused
 
+        camera.getWorldPosition(cameraWorldPos)
+        camera.getWorldQuaternion(cameraWorldQuat)
         camera.getWorldDirection(camForward)
         camera.getWorldDirection(forward)
-        camUp.set(0, 1, 0).applyQuaternion(camera.quaternion)
+        camUp.set(0, 1, 0).applyQuaternion(cameraWorldQuat)
         camRight.crossVectors(camForward, camUp).normalize()
         mouthTarget
-            .copy(camera.position)
+            .copy(cameraWorldPos)
             .add(camForward.clone().multiplyScalar(-MOUTH_OFFSET.z))
             .add(camUp.clone().multiplyScalar(MOUTH_OFFSET.y))
             .add(camRight.clone().multiplyScalar(0.02))
 
         if (isInhalerFocused) {
-            if (usingXRController) {
-                activeController.object.updateWorldMatrix(true, false)
-                activeController.object.getWorldPosition(controllerPos)
-                activeController.object.getWorldQuaternion(controllerQuat)
+            if (usingXRInputSource) {
+                focusedXRSource.object.updateWorldMatrix(true, false)
+                focusedXRSource.object.getWorldPosition(controllerPos)
+                focusedXRSource.object.getWorldQuaternion(controllerQuat)
                 focusTarget.copy(holdOffset).applyQuaternion(controllerQuat).add(controllerPos)
                 group.current.position.lerp(focusTarget, alphaMove)
                 group.current.quaternion.slerp(controllerQuat.clone().multiply(holdQuatOffset), alphaRotate)
@@ -325,21 +462,21 @@ export function Inhaler(props) {
                     desktopPointerDown
                 if (mouthPoseActive) {
                     focusTarget
-                        .copy(camera.position)
+                        .copy(cameraWorldPos)
                         .add(camForward.clone().multiplyScalar(-DESKTOP_MOUTH_OFFSET.z))
                         .add(camUp.clone().multiplyScalar(DESKTOP_MOUTH_OFFSET.y))
                         .add(camRight.clone().multiplyScalar(DESKTOP_MOUTH_OFFSET.x))
                 } else {
                     const inspectDistance = Math.max(FOCUS_DISTANCE, focusDistanceOffset ?? FOCUS_DISTANCE)
                     focusTarget
-                        .copy(camera.position)
+                        .copy(cameraWorldPos)
                         .add(camForward.clone().multiplyScalar(Math.max(inspectDistance, -DESKTOP_INSPECT_OFFSET.z)))
                         .add(camUp.clone().multiplyScalar(DESKTOP_INSPECT_OFFSET.y))
                         .add(camRight.clone().multiplyScalar(DESKTOP_INSPECT_OFFSET.x))
                 }
 
                 group.current.position.lerp(focusTarget, alphaMove)
-                group.current.quaternion.slerp(camera.quaternion, alphaRotate)
+                group.current.quaternion.slerp(cameraWorldQuat, alphaRotate)
                 focusScaleTarget.copy(original.current.scale).multiplyScalar(mouthPoseActive ? 0.76 : 0.84)
             }
             group.current.scale.lerp(focusScaleTarget, alphaMove)
@@ -355,7 +492,9 @@ export function Inhaler(props) {
         desktopMotionRef.current.shakeSpeed = Math.max(0, desktopMotionRef.current.shakeSpeed - delta * 2.8)
 
         const uprightScore = getUprightScore(group.current.quaternion, axesCache)
-        const mouthDistance = group.current.position.distanceTo(mouthTarget)
+        mouthpieceWorld.copy(mouthpieceLocalOffset)
+        group.current.localToWorld(mouthpieceWorld)
+        const mouthDistance = mouthpieceWorld.distanceTo(mouthTarget)
         const thumbstickState = activeController?.gamepad?.['xr-standard-thumbstick']
         const aButtonState = activeController?.gamepad?.['a-button']
         const bButtonState = activeController?.gamepad?.['b-button']
@@ -378,20 +517,21 @@ export function Inhaler(props) {
 
         const stabilityScore = 1 - Math.min(1, speed / STABILITY_SPEED_MAX)
         const shakeSpeed = Math.max(speed, desktopMotionRef.current.shakeSpeed)
+        headEuler.setFromQuaternion(cameraWorldQuat, 'YXZ')
 
         syncTrainingInput({
             deltaMs: delta * 1000,
-            inputMode: usingXRController ? 'xr' : 'desktop',
-            isXR: usingXRController,
+            inputMode: usingXRInputSource ? 'xr' : 'desktop',
+            isXR: usingXRInputSource,
             shakeSpeed: isInhalerFocused ? shakeSpeed : 0,
             uprightScore: isInhalerFocused ? uprightScore : 0,
-            headTilt: camera.rotation.x,
+            headTilt: headEuler.x,
             mouthDistance: isInhalerFocused ? mouthDistance : 1,
             inhaleActive: isInhalerFocused ? inhaleActive : false,
             breathOutActive: isInhalerFocused ? breathOutActive : false,
             holdBreathActive: isInhalerFocused ? holdBreathActive : false,
             stabilityScore: isInhalerFocused ? stabilityScore : 0,
-            inhalerPosition: group.current.position.toArray(),
+            inhalerPosition: mouthpieceWorld.toArray(),
             mouthTargetPosition: mouthTarget.toArray(),
             sessionPhase,
         })
@@ -399,6 +539,44 @@ export function Inhaler(props) {
 
     useFrame(() => {
         if (!group.current) return
+
+        if (
+            xrMode === 'immersive-vr' &&
+            isInhalerFocused &&
+            currentStep?.validatorType === 'capState' &&
+            capMeshRef.current &&
+            !isCapOff
+        ) {
+            let nextCapHoverHandedness = null
+
+            for (const handSource of [leftHand, rightHand]) {
+                if (!handSource?.object) {
+                    continue
+                }
+
+                handSource.object.updateWorldMatrix(true, false)
+                handSource.object.getWorldPosition(controllerRayPos)
+                controllerDir.set(0, 0, -1).applyQuaternion(handSource.object.quaternion)
+                raycaster.set(controllerRayPos, controllerDir)
+
+                if (raycaster.intersectObject(capMeshRef.current, true).length > 0) {
+                    nextCapHoverHandedness = handSource.inputSource.handedness
+                    break
+                }
+            }
+
+            capHoverHandednessRef.current = nextCapHoverHandedness
+            const nextCapHovered = nextCapHoverHandedness != null
+            if (nextCapHovered !== isCapHovered) {
+                setIsCapHovered(nextCapHovered)
+            }
+        } else {
+            capHoverHandednessRef.current = null
+            if (isCapHovered) {
+                setIsCapHovered(false)
+            }
+        }
+
         if (isInhalerFocused) {
             if (hoverRef.current) {
                 hoverRef.current = false
@@ -407,10 +585,10 @@ export function Inhaler(props) {
             return
         }
 
-        if (xrMode === 'immersive-vr' && activeController?.object) {
-            activeController.object.updateWorldMatrix(true, false)
-            activeController.object.getWorldPosition(controllerRayPos)
-            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+        if (xrMode === 'immersive-vr' && activePointerSource?.object) {
+            activePointerSource.object.updateWorldMatrix(true, false)
+            activePointerSource.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activePointerSource.object.quaternion)
             raycaster.set(controllerRayPos, controllerDir)
         } else {
             camera.getWorldDirection(forward)
@@ -427,7 +605,7 @@ export function Inhaler(props) {
 
     const handleReturn = (event) => {
         event.stopPropagation()
-        if (isInhalerFocused) setInhalerFocused(false)
+        if (isInhalerFocused) releaseInhaler()
     }
 
     const handleClick = (event) => {
@@ -441,7 +619,7 @@ export function Inhaler(props) {
             if (xrMode !== 'immersive-vr') {
                 setClipboardFocused(false)
             }
-            setInhalerFocused(true)
+            focusInhaler('desktop')
             return
         }
     }
@@ -455,7 +633,7 @@ export function Inhaler(props) {
             onContextMenu={handleReturn}
         >
             <group visible={isTargeted} scale={1.045}>
-                <mesh geometry={nodes.mesh_0.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                <mesh geometry={nodes.mesh_0.geometry} rotation={[-1.864, 0, 0]} scale={INHALER_MESH_SCALE} renderOrder={20}>
                     <meshBasicMaterial
                         color="#ffd46b"
                         transparent
@@ -465,7 +643,7 @@ export function Inhaler(props) {
                         toneMapped={false}
                     />
                 </mesh>
-                <mesh geometry={nodes.mesh_0_1.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                <mesh geometry={nodes.mesh_0_1.geometry} rotation={[-1.864, 0, 0]} scale={INHALER_MESH_SCALE} renderOrder={20}>
                     <meshBasicMaterial
                         color="#ffd46b"
                         transparent
@@ -475,7 +653,7 @@ export function Inhaler(props) {
                         toneMapped={false}
                     />
                 </mesh>
-                <mesh geometry={nodes.mesh_0_15.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                <mesh geometry={nodes.mesh_0_15.geometry} rotation={[-1.864, 0, 0]} scale={INHALER_MESH_SCALE} renderOrder={20}>
                     <meshBasicMaterial
                         color="#ffd46b"
                         transparent
@@ -488,7 +666,7 @@ export function Inhaler(props) {
                 <mesh
                     geometry={nodes.mesh_0_55.geometry}
                     rotation={[-1.864, 0, 0]}
-                    scale={0.91}
+                    scale={INHALER_MESH_SCALE}
                     visible={!isCapOff}
                     renderOrder={20}
                 >
@@ -503,16 +681,33 @@ export function Inhaler(props) {
                 </mesh>
             </group>
 
-            <mesh geometry={nodes.mesh_0.geometry} material={materials.matalparts} rotation={[-1.864, 0, 0]} scale={0.91} />
-            <mesh geometry={nodes.mesh_0_1.geometry} material={materials.tankinfo} rotation={[-1.864, 0, 0]} scale={0.91} />
-            <mesh geometry={nodes.mesh_0_15.geometry} material={materials.lightblue} rotation={[-1.864, 0, 0]} scale={0.91} />
+            <mesh geometry={nodes.mesh_0.geometry} material={materials.matalparts} rotation={[-1.864, 0, 0]} scale={INHALER_MESH_SCALE} />
+            <mesh geometry={nodes.mesh_0_1.geometry} material={materials.tankinfo} rotation={[-1.864, 0, 0]} scale={INHALER_MESH_SCALE} />
+            <mesh geometry={nodes.mesh_0_15.geometry} material={materials.lightblue} rotation={[-1.864, 0, 0]} scale={INHALER_MESH_SCALE} />
             <mesh
+                ref={capMeshRef}
                 geometry={nodes.mesh_0_55.geometry}
                 material={materials.darkblue}
                 rotation={[-1.864, 0, 0]}
-                scale={0.91}
+                scale={INHALER_MESH_SCALE}
                 visible={!isCapOff}
             />
+            <mesh
+                geometry={nodes.mesh_0_55.geometry}
+                rotation={[-1.864, 0, 0]}
+                scale={0.95}
+                visible={!isCapOff && isCapHovered}
+                renderOrder={21}
+            >
+                <meshBasicMaterial
+                    color="#7dd3fc"
+                    transparent
+                    opacity={0.18}
+                    side={THREE.BackSide}
+                    depthWrite={false}
+                    toneMapped={false}
+                />
+            </mesh>
         </group>
     )
 }

@@ -1,12 +1,13 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useXR, useXRInputSourceState } from '@react-three/xr'
+import { useXR } from '@react-three/xr'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { BrandChip3D } from './BrandChip3D'
 import { useHoverSelectAction } from './useHoverSelectAction'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 1.2
 const PANEL_HEIGHT = 0.8
@@ -45,13 +46,12 @@ export function TrainingStartPanel3D(props) {
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const panelWorldPosition = useMemo(() => new THREE.Vector3(), [])
     const controllerDir = useMemo(() => new THREE.Vector3(), [])
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
-    const rightController = useXRInputSourceState('controller', 'right')
-    const leftController = useXRInputSourceState('controller', 'left')
-    const activeController = rightController ?? leftController
+    const { activePointerSource } = useXRHardwareState()
 
     const { enabled, isConfigured } = useConvaiRuntime()
     const { sessionPhase, sessionError, startTraining } = useTrainingStore()
@@ -99,7 +99,12 @@ export function TrainingStartPanel3D(props) {
         root.current.scale.setScalar(scale)
         floatTimeRef.current += delta
         root.current.position.y = 0.04 + Math.sin(floatTimeRef.current * 1.6) * FLOAT_AMPLITUDE
-        lookTarget.copy(camera.position)
+        root.current.getWorldPosition(panelWorldPosition)
+        camera.getWorldPosition(lookTarget)
+        lookTarget.y = panelWorldPosition.y
+        if (root.current.parent) {
+            root.current.parent.worldToLocal(lookTarget)
+        }
         root.current.lookAt(lookTarget)
 
         const learningButton = root.current.getObjectByName('learning-button')
@@ -107,10 +112,10 @@ export function TrainingStartPanel3D(props) {
 
         if (learningButton && assessmentButton) {
             // In XR mode, raycast from the controller; on desktop, use camera gaze
-            if (xrMode === 'immersive-vr' && activeController?.object) {
-                activeController.object.updateWorldMatrix(true, false)
-                activeController.object.getWorldPosition(controllerRayPos)
-                controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+            if (xrMode === 'immersive-vr' && activePointerSource?.object) {
+                activePointerSource.object.updateWorldMatrix(true, false)
+                activePointerSource.object.getWorldPosition(controllerRayPos)
+                controllerDir.set(0, 0, -1).applyQuaternion(activePointerSource.object.quaternion)
                 raycaster.set(controllerRayPos, controllerDir)
             } else {
                 camera.getWorldDirection(forward)

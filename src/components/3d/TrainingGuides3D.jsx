@@ -7,8 +7,9 @@ import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
 
 const MOUTH_GUIDE_STEPS = new Set(['mouthSeal', 'inhalePress'])
-const PANEL_POSITION = [-1.52, 1.58, -0.18]
-const PANEL_OFFSET = new THREE.Vector3(0, 0.22, 0)
+const HUD_DISTANCE = 1.65 // Increased distance for comfort
+const HUD_SMOOTH_FACTOR = 4.0
+const PANEL_OFFSET = new THREE.Vector3(0, 0.15, 0)
 
 export function TrainingGuides3D() {
     const haloRef = useRef()
@@ -39,17 +40,18 @@ export function TrainingGuides3D() {
         Array.isArray(lastInputFrame?.mouthTargetPosition) &&
         Array.isArray(lastInputFrame?.inhalerPosition)
 
-    // In XR, show the hint panel for ALL step types (not just mouth steps)
     const showHintPanel =
         trainingMode !== 'assessment' &&
         isRunning &&
         currentStep &&
-        (showMouthGuide || (isXR && isInhalerFocused))
+        showMouthGuide &&
+        !isXR
 
     const mouthTarget = useMemo(() => new THREE.Vector3(), [])
     const inhalerPosition = useMemo(() => new THREE.Vector3(), [])
-    const panelPosition = useMemo(() => new THREE.Vector3(...PANEL_POSITION), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const tempV3 = useMemo(() => new THREE.Vector3(), [])
+    const tempQuat = useMemo(() => new THREE.Quaternion(), [])
 
     if (Array.isArray(lastInputFrame?.mouthTargetPosition)) {
         mouthTarget.fromArray(lastInputFrame.mouthTargetPosition)
@@ -73,8 +75,23 @@ export function TrainingGuides3D() {
         }
 
         if (panelRef.current) {
-            lookTarget.copy(camera.position)
-            panelRef.current.lookAt(lookTarget)
+            if (isXR) {
+                // HUD behavior in VR: follow gaze but with smooth interpolation
+                // Offset target slightly down from eye level
+                tempV3.set(0, -0.12, -HUD_DISTANCE)
+                camera.getWorldQuaternion(tempQuat)
+                tempV3.applyQuaternion(tempQuat)
+                
+                camera.getWorldPosition(lookTarget)
+                tempV3.add(lookTarget)
+                
+                panelRef.current.position.lerp(tempV3, delta * HUD_SMOOTH_FACTOR)
+                panelRef.current.lookAt(lookTarget)
+            } else {
+                // Non-VR: static position
+                camera.getWorldPosition(lookTarget)
+                panelRef.current.lookAt(lookTarget)
+            }
         }
     })
 
@@ -85,9 +102,7 @@ export function TrainingGuides3D() {
     const panelTitle = showMouthGuide ? 'Mouth target' : currentStep?.shortLabel ?? 'Current step'
     const panelSubtitle = showMouthGuide
         ? 'Step back if needed. The ring marks where the mouthpiece should land.'
-        : isXR
-            ? 'Follow the XR Controls panel for controller actions.'
-            : ''
+        : ''
 
     return (
         <group>
@@ -117,7 +132,7 @@ export function TrainingGuides3D() {
 
             {/* Floating hint panel — always visible when hint panel should show */}
             {showHintPanel && (
-                <group ref={panelRef} position={panelPosition.clone().add(PANEL_OFFSET).toArray()}>
+                <group ref={panelRef} position={isXR ? [0, 1.5, -2] : new THREE.Vector3(-1.52, 1.8, -0.18).toArray()}>
                     <RoundedBox args={[0.86, 0.32, 0.02]} radius={0.04} smoothness={5}>
                         <meshStandardMaterial color="#0f1c24" transparent opacity={0.9} />
                     </RoundedBox>
@@ -165,4 +180,3 @@ export function TrainingGuides3D() {
         </group>
     )
 }
-

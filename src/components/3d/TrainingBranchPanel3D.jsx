@@ -1,11 +1,12 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useXR, useXRInputSourceState } from '@react-three/xr'
+import { useXR } from '@react-three/xr'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { BrandChip3D } from './BrandChip3D'
 import { useHoverSelectAction } from './useHoverSelectAction'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 1.05
 const PANEL_HEIGHT = 0.58
@@ -33,9 +34,7 @@ export function TrainingBranchPanel3D(props) {
     const controllerPos = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
-    const rightController = useXRInputSourceState('controller', 'right')
-    const leftController = useXRInputSourceState('controller', 'left')
-    const activeController = rightController ?? leftController
+    const { activePointerSource } = useXRHardwareState()
 
     const { currentStepId, dispatchTrainingAction, sessionPhase } = useTrainingStore()
     const isVisible = sessionPhase === 'branching' && currentStepId === 'second_dose_decision'
@@ -68,10 +67,10 @@ export function TrainingBranchPanel3D(props) {
         root.current.lookAt(lookTarget)
 
         // In XR mode, raycast from the controller; on desktop, use camera gaze
-        if (xrMode === 'immersive-vr' && activeController?.object) {
-            activeController.object.updateWorldMatrix(true, false)
-            activeController.object.getWorldPosition(controllerPos)
-            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+        if (xrMode === 'immersive-vr' && activePointerSource?.object) {
+            activePointerSource.object.updateWorldMatrix(true, false)
+            activePointerSource.object.getWorldPosition(controllerPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activePointerSource.object.quaternion)
             raycaster.set(controllerPos, controllerDir)
         } else {
             camera.getWorldDirection(forward)

@@ -40,8 +40,9 @@ function getControlHints(inputMode, step) {
     if (inputMode === 'xr') {
         return [
             'Quest: point and select the inhaler to grab it.',
-            'Thumbstick up = simulate inhale, down = simulate exhale.',
-            'Trigger = press inhaler, B = hold breath.',
+            'Thumbstick Up = inhale, Thumbstick Down or A = exhale.',
+            'For inhale-and-press: hold inhale briefly, press Trigger once, then keep inhaling.',
+            'Trigger = press inhaler, Hold B = hold breath.',
             'Hold X/Y on Left Controller to Talk to Pharmacist.',
         ]
     }

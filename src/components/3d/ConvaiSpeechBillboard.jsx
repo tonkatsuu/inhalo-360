@@ -5,6 +5,7 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
+import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_RENDER_ORDER = 30
 const TEXT_RENDER_ORDER = 31
@@ -25,6 +26,7 @@ export function ConvaiSpeechBillboard(props) {
     const visibilityRef = useRef(0)
 
     const xrMode = useXR((state) => state.mode)
+    const { handsOnly } = useXRHardwareState()
     const {
         enabled,
         isConfigured,
@@ -49,7 +51,7 @@ export function ConvaiSpeechBillboard(props) {
     }, [agentCaptionText])
 
     const isXR = xrMode === 'immersive-vr'
-    const interactionCopy = isXR ? 'Hold X or Y on left controller to talk' : 'Hold Space to talk'
+    const interactionCopy = isXR ? (handsOnly ? 'Controllers required to talk in current build' : 'Hold X or Y on left controller to talk') : 'Hold Space to talk'
 
     const isListening = state?.agentState === 'listening'
     const isThinking = state?.isThinking === true
