@@ -1,23 +1,17 @@
-import { useFrame, useThree } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import { useXR, useXRControllerLocomotion, useXRStore } from '@react-three/xr'
 import * as THREE from 'three'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 
 const KEYS = { w: false, a: false, s: false, d: false, q: false, e: false }
 
-export function VRLocomotion({ store, speed = 1.5, turnSpeed = 1.5 }) {
+export function VRLocomotion({ originRef, speed = 1.5, turnSpeed = 1.5 }) {
     const xr = useXR()
     const xrStore = useXRStore()
-    const originRef = useRef(null)
 
     const forward = useMemo(() => new THREE.Vector3(), [])
     const right = useMemo(() => new THREE.Vector3(), [])
     const direction = useMemo(() => new THREE.Vector3(), [])
-
-    // Keep originRef in sync with the XR store origin (priority 1 runs early)
-    useFrame(() => {
-        originRef.current = xrStore.getState().origin
-    }, 1)
 
     // Built-in controller locomotion (thumbsticks) - left: move, right: turn
     useXRControllerLocomotion(
@@ -27,7 +21,7 @@ export function VRLocomotion({ store, speed = 1.5, turnSpeed = 1.5 }) {
         'left'
     )
 
-    // Set initial position when entering VR and setup keyboard
+    // Keyboard listeners for desktop fallback while an XR session is active.
     useEffect(() => {
         const handleKeyDown = (e) => {
             const key = e.key.toLowerCase()
@@ -40,25 +34,15 @@ export function VRLocomotion({ store, speed = 1.5, turnSpeed = 1.5 }) {
         window.addEventListener('keydown', handleKeyDown)
         window.addEventListener('keyup', handleKeyUp)
 
-        const unsub = store.subscribe((state, prevState) => {
-            if (state.mode === 'immersive-vr' && prevState.mode !== 'immersive-vr') {
-                if (state.origin) {
-                    state.origin.position.set(-2.162, 0, 1.058)
-                    state.origin.rotation.set(0, 0, 0)
-                }
-            }
-        })
-
         return () => {
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
-            unsub()
         }
-    }, [store])
+    }, [])
 
     // Keyboard fallback when in VR
     useFrame((_state, delta) => {
-        const originObj = xrStore.getState().origin
+        const originObj = originRef?.current
         if (!originObj || !xr || xr.mode !== 'immersive-vr') return
         if (!(KEYS.w || KEYS.s || KEYS.a || KEYS.d || KEYS.q || KEYS.e)) return
 

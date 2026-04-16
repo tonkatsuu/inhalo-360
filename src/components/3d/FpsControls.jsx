@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
+import { useXR } from '@react-three/xr'
 import * as THREE from 'three'
 
 const PLAYER_RADIUS = 0.28
@@ -52,6 +53,8 @@ function canOccupyPosition(position, collisionLayout) {
 
 export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer = true, collisionLayout = null }) {
   const { camera, gl } = useThree()
+  const xrMode = useXR((state) => state.mode)
+  const isInXR = xrMode === 'immersive-vr'
   const cameraRef = useRef()
   const keys = useRef({})
   const yaw = useRef(0)
@@ -92,7 +95,7 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
     }
 
     const handleClick = () => {
-      if (!canLockPointer) return
+      if (!canLockPointer || isInXR) return
       if (document.pointerLockElement !== gl.domElement) {
         gl.domElement.requestPointerLock()
       }
@@ -111,10 +114,10 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
       document.removeEventListener('pointerlockchange', handlePointerLockChange)
       gl.domElement.removeEventListener('click', handleClick)
     }
-  }, [camera, canLockPointer, gl, lookSpeed])
+  }, [camera, canLockPointer, gl, isInXR, lookSpeed])
 
   useEffect(() => {
-    if (canLockPointer) {
+    if (canLockPointer && !isInXR) {
       return undefined
     }
 
@@ -124,10 +127,10 @@ export function FpsControls({ moveSpeed = 2.5, lookSpeed = 0.002, canLockPointer
 
     isLocked.current = false
     return undefined
-  }, [canLockPointer, gl])
+  }, [canLockPointer, gl, isInXR])
 
   useFrame((_state, delta) => {
-    if (!isLocked.current || !cameraRef.current) {
+    if (isInXR || !isLocked.current || !cameraRef.current) {
       return
     }
 

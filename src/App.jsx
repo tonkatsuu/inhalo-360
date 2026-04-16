@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { XR, createXRStore } from '@react-three/xr'
+import { XR, XROrigin, createXRStore, useXR } from '@react-three/xr'
 import * as THREE from 'three'
 import { Inhaler } from './components/3d/Inhaler'
 import { Clipboard } from './components/3d/Clipboard'
 import { ClinicRoom } from './components/3d/Clinic_vr_scene'
 import { ConvaiAvatar } from './components/3d/ConvaiAvatar'
 import { FpsControls } from './components/3d/FpsControls'
+import { VRLocomotion } from './components/3d/VRLocomotion'
 import { TrainingStartPanel3D } from './components/3d/TrainingStartPanel3D'
 import { TrainingReviewPanel3D } from './components/3d/TrainingReviewPanel3D'
 import { TrainingBranchPanel3D } from './components/3d/TrainingBranchPanel3D'
@@ -59,9 +60,21 @@ function Crosshair() {
 const store = createXRStore()
 const convaiConfig = readConvaiConfig()
 const showConvaiAvatar = convaiConfig.enabled && convaiConfig.isConfigured
+const XR_WORLD_SCALE = 2.0
+
+function ActiveVRLocomotion({ originRef }) {
+    const xrMode = useXR((state) => state.mode)
+
+    if (xrMode !== 'immersive-vr') {
+        return null
+    }
+
+    return <VRLocomotion originRef={originRef} />
+}
 
 export default function App() {
     const [collisionLayout, setCollisionLayout] = useState(null)
+    const xrOriginRef = useRef(null)
     const handleCollisionLayoutChange = useCallback((nextLayout) => {
         setCollisionLayout(nextLayout)
     }, [])
@@ -97,6 +110,11 @@ export default function App() {
 
                 <Canvas camera={{ position: [-2.35, 1.6, 1.15], rotation: [-0.06, 0, 0], fov: 75 }}>
                     <XR store={store}>
+                        <XROrigin
+                            ref={xrOriginRef}
+                            position={[-2.162, 0, 1.058]}
+                            scale={[XR_WORLD_SCALE, XR_WORLD_SCALE, XR_WORLD_SCALE]}
+                        />
                         <color attach="background" args={['#e9dfcf']} />
                         <fog attach="fog" args={['#e9dfcf', 8, 28]} />
                         <ambientLight intensity={0.9} color={new THREE.Color('#f3ecdf')} />
@@ -128,6 +146,7 @@ export default function App() {
                         <VideoPanel3D position={[-3.6, 1.72, -1.8]} />
                         <XRControlHints3D position={[-1.55, 1.88, -0.15]} />
                         <AssessmentEndPanel3D position={[-2.35, 1.4, -0.15]} />
+                        <ActiveVRLocomotion originRef={xrOriginRef} />
                         <FpsControls canLockPointer collisionLayout={collisionLayout} />
                         <ConvaiXRMicControls />
                     </XR>
