@@ -1,58 +1,155 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
+import { useXR, useXRControllerButtonEvent, useXRInputSourceState } from '@react-three/xr'
 import * as THREE from 'three'
-import { useTrainingStore, TRAINING_STEPS } from '../../store/useTrainingStore'
+import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
+import { isFromOverlayElement } from '../../utils/dom'
 
 const MOVE_SPEED = 12
 const ROTATE_SPEED = 12
 const FOCUS_DISTANCE = 0.8
-const SHAKE_SPEED_THRESHOLD = 1.2
-const TILT_THRESHOLD = 0.15 // radians, positive = looking up
+const STABILITY_SPEED_MAX = 1.1
+const MOUTH_OFFSET = new THREE.Vector3(0, -0.06, -0.12)
+const DESKTOP_INSPECT_OFFSET = new THREE.Vector3(0.2, -0.16, -0.62)
+const DESKTOP_MOUTH_OFFSET = new THREE.Vector3(0.05, -0.08, -0.26)
+
+function getUprightScore(quaternion, axesCache) {
+    axesCache.x.set(1, 0, 0).applyQuaternion(quaternion)
+    axesCache.y.set(0, 1, 0).applyQuaternion(quaternion)
+    axesCache.z.set(0, 0, 1).applyQuaternion(quaternion)
+
+    return Math.max(
+        Math.abs(axesCache.x.dot(axesCache.worldUp)),
+        Math.abs(axesCache.y.dot(axesCache.worldUp)),
+        Math.abs(axesCache.z.dot(axesCache.worldUp)),
+    )
+}
 
 export function Inhaler(props) {
     const { nodes, materials } = useGLTF('/models/inhaler-transformed.glb')
     const group = useRef()
     const lastPos = useRef(new THREE.Vector3())
     const [isHovering, setIsHovering] = useState(false)
+    const hoverRef = useRef(false)
     const materialState = useRef(new Map())
+    const isPointerDown = useRef(false)
+    const hasAutoPressed = useRef(false)
     const original = useRef({
         pos: new THREE.Vector3(),
         quat: new THREE.Quaternion(),
         scale: new THREE.Vector3(),
+        captured: false,
     })
+    const desktopMotionRef = useRef({
+        shakeSpeed: 0,
+    })
+    const actionLockRef = useRef(false)
 
     const camera = useThree((state) => state.camera)
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
+    const focusTarget = useMemo(() => new THREE.Vector3(), [])
+    const focusScaleTarget = useMemo(() => new THREE.Vector3(), [])
+    const mouthTarget = useMemo(() => new THREE.Vector3(), [])
+    const camForward = useMemo(() => new THREE.Vector3(), [])
+    const camUp = useMemo(() => new THREE.Vector3(), [])
+    const camRight = useMemo(() => new THREE.Vector3(), [])
+    const controllerDir = useMemo(() => new THREE.Vector3(), [])
+    const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
+    const controllerPos = useMemo(() => new THREE.Vector3(), [])
+    const controllerQuat = useMemo(() => new THREE.Quaternion(), [])
+    const holdOffset = useMemo(() => new THREE.Vector3(0.018, -0.045, -0.035), [])
+    // Flip inhaler upside-down so controller grip maps to real inhaler hold (mouthpiece toward face, canister at top)
+    const holdQuatOffset = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, Math.PI, 0)), [])
+    const hoverHighlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
+    const promptHighlightColor = useMemo(() => new THREE.Color('#7dd3fc'), [])
+    const axesCache = useMemo(
+        () => ({
+            x: new THREE.Vector3(),
+            y: new THREE.Vector3(),
+            z: new THREE.Vector3(),
+            worldUp: new THREE.Vector3(0, 1, 0),
+        }),
+        [],
+    )
+
+    const xrMode = useXR((state) => state.mode)
+    const rightController = useXRInputSourceState('controller', 'right')
+    const leftController = useXRInputSourceState('controller', 'left')
+    const activeController = rightController ?? leftController
 
     const {
-        currentStep,
+        currentStepId,
+        currentStepRuntime,
         isCapOff,
         isInhalerFocused,
-        isShaking,
-        shakeDuration,
-        shakeElapsed,
+        focusDistanceOffset,
+        sessionPhase,
+        dispatchTrainingAction,
+        recordMistake,
         setCapOff,
         setInhalerFocused,
-        setIsShaking,
-        setShakeElapsed,
-        completeShake,
-        advanceStep,
-        completeStep,
+        setLastUserAction,
+        syncTrainingInput,
     } = useTrainingStore()
 
-    useEffect(() => {
-        if (!group.current) return
-        original.current.pos.copy(group.current.position)
-        original.current.quat.copy(group.current.quaternion)
-        original.current.scale.copy(group.current.scale)
-        lastPos.current.copy(group.current.position)
-    }, [])
+    const currentStep = getStepById(currentStepId)
+    const isXRInput = xrMode === 'immersive-vr' && activeController?.object
+    const isTargeted = isHovering
+    const isPromptedStep = !isInhalerFocused && ['capState', 'shake', 'inhalePress', 'mouthSeal'].includes(currentStep?.validatorType)
 
-    const focusTarget = useMemo(() => new THREE.Vector3(), [])
-    const camForward = useMemo(() => new THREE.Vector3(), [])
-    const highlightColor = useMemo(() => new THREE.Color('#ffd46b'), [])
+    const recordBeforeStartMistake = useCallback(() => {
+        recordMistake({
+            stepId: currentStepId,
+            code: 'attempt_action_before_start',
+            message: 'The inhaler was used before the training session was started.',
+            correction: 'Press Start Training first, then wait for the pharmacist to guide the session.',
+        })
+    }, [currentStepId, recordMistake])
+
+    const attemptPrimaryAction = useCallback(() => {
+        if (!currentStep) {
+            return
+        }
+
+        setLastUserAction('primary-action')
+
+        if (currentStep.validatorType === 'capState') {
+            const shouldRemove = currentStep.successWindow?.capOff === true
+            const nextAction = shouldRemove ? 'remove-cap' : 'replace-cap'
+            setCapOff(shouldRemove)
+            dispatchTrainingAction({ type: nextAction })
+            return
+        }
+
+        dispatchTrainingAction({ type: 'press-canister' })
+    }, [currentStep, dispatchTrainingAction, setCapOff, setLastUserAction])
+
+    useXRControllerButtonEvent(activeController, 'xr-standard-trigger', (state) => {
+        if (state !== 'pressed') {
+            actionLockRef.current = false
+            return
+        }
+
+        if (actionLockRef.current) {
+            return
+        }
+
+        actionLockRef.current = true
+        if (!isInhalerFocused) {
+            setInhalerFocused(true)
+            return
+        }
+
+        attemptPrimaryAction()
+    })
+
+    useEffect(() => {
+        // Reset the captured flag when props change so the resting position
+        // is re-snapshotted on the next frame (props.position may have changed).
+        original.current.captured = false
+    }, [props.position, props.rotation, props.scale])
 
     useEffect(() => {
         if (!group.current) return
@@ -74,12 +171,30 @@ export function Inhaler(props) {
 
     useEffect(() => {
         const handleGlobalDrop = (event) => {
+            if (isFromOverlayElement(event.target)) return
             if (!isInhalerFocused) return
+            if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') return
             event.preventDefault()
             setInhalerFocused(false)
         }
 
         const handleGlobalPointerDown = (event) => {
+            if (isFromOverlayElement(event.target)) return
+            
+            if (event.button === 0) {
+                isPointerDown.current = true
+            }
+
+            if (event.button === 0 && !isInhalerFocused && isHovering) {
+                if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') {
+                    recordBeforeStartMistake()
+                    return
+                }
+                event.preventDefault()
+                setInhalerFocused(true)
+                return
+            }
+
             if (event.button === 2) {
                 if (isInhalerFocused) {
                     event.preventDefault()
@@ -87,42 +202,73 @@ export function Inhaler(props) {
                 }
                 return
             }
-            if (event.button === 0) {
-                if (!isInhalerFocused && isHovering) {
-                    event.preventDefault()
-                    setInhalerFocused(true)
-                } else if (isInhalerFocused) {
-                    // Handle step interactions while focused
-                    const step = TRAINING_STEPS[currentStep]
-                    if (!step) return
-                    if (step.action === 'click') {
-                        advanceStep()
-                    } else if (step.action === 'removeCap' && !isCapOff) {
-                        setCapOff(true)
-                    } else if (step.action === 'replaceCap' && isCapOff) {
-                        setCapOff(false)
-                    }
+
+            if (event.button === 0 && isInhalerFocused) {
+                if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') {
+                    recordBeforeStartMistake()
+                    return
                 }
+
+                // Only trigger discrete actions on click. Breathing is state-driven in useFrame.
+                if (currentStep?.validatorType === 'capState' || (currentStep?.validatorType === 'inhalePress' && xrMode === 'immersive-vr')) {
+                    attemptPrimaryAction()
+                }
+            }
+        }
+
+        const handleGlobalPointerUp = (event) => {
+            if (event.button === 0) {
+                isPointerDown.current = false
+                hasAutoPressed.current = false
             }
         }
 
         window.addEventListener('contextmenu', handleGlobalDrop)
         window.addEventListener('pointerdown', handleGlobalPointerDown)
+        window.addEventListener('pointerup', handleGlobalPointerUp)
         return () => {
             window.removeEventListener('contextmenu', handleGlobalDrop)
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
+            window.removeEventListener('pointerup', handleGlobalPointerUp)
         }
-    }, [isInhalerFocused, isHovering, setInhalerFocused, currentStep, isCapOff, advanceStep, setCapOff])
+    }, [attemptPrimaryAction, currentStep?.validatorType, isHovering, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setInhalerFocused, xrMode])
 
     useEffect(() => {
-        const shouldHighlight = isHovering || isInhalerFocused
+        const handleMouseMove = (event) => {
+            if (!isInhalerFocused) {
+                return
+            }
+
+            const pointerMotion = Math.hypot(event.movementX, event.movementY)
+            if (pointerMotion <= 0) {
+                return
+            }
+
+            desktopMotionRef.current.shakeSpeed = Math.max(
+                desktopMotionRef.current.shakeSpeed,
+                pointerMotion * 0.055,
+            )
+        }
+
+        window.addEventListener('mousemove', handleMouseMove)
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove)
+        }
+    }, [isInhalerFocused])
+
+    useEffect(() => {
         materialState.current.forEach((originalState, material) => {
             if (!material) return
-            if (shouldHighlight) {
+            if (isTargeted) {
                 if (material.emissive) {
-                    material.emissive.copy(highlightColor)
+                    material.emissive.copy(hoverHighlightColor)
                 }
-                material.emissiveIntensity = 0.6
+                material.emissiveIntensity = 0.42
+            } else if (isPromptedStep) {
+                if (material.emissive) {
+                    material.emissive.copy(promptHighlightColor)
+                }
+                material.emissiveIntensity = 0.12
             } else {
                 if (material.emissive && originalState.emissive) {
                     material.emissive.copy(originalState.emissive)
@@ -130,62 +276,149 @@ export function Inhaler(props) {
                 material.emissiveIntensity = originalState.emissiveIntensity
             }
         })
-    }, [highlightColor, isHovering, isInhalerFocused])
+    }, [hoverHighlightColor, isInhalerFocused, isPromptedStep, isTargeted, promptHighlightColor])
 
     useFrame((_state, delta) => {
         if (!group.current) return
 
+        // Capture the true resting transform on the first frame after mount / prop change,
+        // because useEffect([]) fires before R3F has propagated position/rotation/scale props.
+        if (!original.current.captured) {
+            original.current.pos.copy(group.current.position)
+            original.current.quat.copy(group.current.quaternion)
+            original.current.scale.copy(group.current.scale)
+            lastPos.current.copy(group.current.position)
+            original.current.captured = true
+        }
+
         const alphaMove = 1 - Math.exp(-MOVE_SPEED * delta)
         const alphaRotate = 1 - Math.exp(-ROTATE_SPEED * delta)
+        const usingXRController = Boolean(isXRInput && isInhalerFocused)
+        const desktopPointerDown = isPointerDown.current && !usingXRController && isInhalerFocused
+
+        camera.getWorldDirection(camForward)
+        camera.getWorldDirection(forward)
+        camUp.set(0, 1, 0).applyQuaternion(camera.quaternion)
+        camRight.crossVectors(camForward, camUp).normalize()
+        mouthTarget
+            .copy(camera.position)
+            .add(camForward.clone().multiplyScalar(-MOUTH_OFFSET.z))
+            .add(camUp.clone().multiplyScalar(MOUTH_OFFSET.y))
+            .add(camRight.clone().multiplyScalar(0.02))
 
         if (isInhalerFocused) {
-            camera.getWorldDirection(camForward)
-            focusTarget.copy(camera.position).add(camForward.multiplyScalar(FOCUS_DISTANCE))
-
-            group.current.position.lerp(focusTarget, alphaMove)
-            group.current.quaternion.slerp(camera.quaternion, alphaRotate)
-
-            const movementDelta = group.current.position.distanceTo(lastPos.current)
-            lastPos.current.copy(group.current.position)
-
-            // Check if we're on a shake step (step 0 or step 9)
-            const isShakeStep = currentStep === 0 || currentStep === 9
-            if (isShakeStep) {
-                const speed = movementDelta / Math.max(delta, 0.0001)
-                if (speed > SHAKE_SPEED_THRESHOLD) {
-                    if (!isShaking) setIsShaking(true)
-                    const nextElapsed = shakeElapsed + delta
-                    setShakeElapsed(nextElapsed)
-                    if (nextElapsed >= shakeDuration) {
-                        completeShake()
-                    }
-                } else if (isShaking) {
-                    setIsShaking(false)
+            if (usingXRController) {
+                activeController.object.updateWorldMatrix(true, false)
+                activeController.object.getWorldPosition(controllerPos)
+                activeController.object.getWorldQuaternion(controllerQuat)
+                focusTarget.copy(holdOffset).applyQuaternion(controllerQuat).add(controllerPos)
+                group.current.position.lerp(focusTarget, alphaMove)
+                group.current.quaternion.slerp(controllerQuat.clone().multiply(holdQuatOffset), alphaRotate)
+                focusScaleTarget.copy(original.current.scale)
+            } else {
+                const mouthPoseActive =
+                    ['mouthSeal', 'inhalePress'].includes(currentStep?.validatorType) &&
+                    desktopPointerDown
+                if (mouthPoseActive) {
+                    focusTarget
+                        .copy(camera.position)
+                        .add(camForward.clone().multiplyScalar(-DESKTOP_MOUTH_OFFSET.z))
+                        .add(camUp.clone().multiplyScalar(DESKTOP_MOUTH_OFFSET.y))
+                        .add(camRight.clone().multiplyScalar(DESKTOP_MOUTH_OFFSET.x))
+                } else {
+                    const inspectDistance = Math.max(FOCUS_DISTANCE, focusDistanceOffset ?? FOCUS_DISTANCE)
+                    focusTarget
+                        .copy(camera.position)
+                        .add(camForward.clone().multiplyScalar(Math.max(inspectDistance, -DESKTOP_INSPECT_OFFSET.z)))
+                        .add(camUp.clone().multiplyScalar(DESKTOP_INSPECT_OFFSET.y))
+                        .add(camRight.clone().multiplyScalar(DESKTOP_INSPECT_OFFSET.x))
                 }
-            }
 
-            // Check if we're on a tilt step (step 3)
-            if (currentStep === 3 && camera.rotation.x > TILT_THRESHOLD) {
-                completeStep(3)
+                group.current.position.lerp(focusTarget, alphaMove)
+                group.current.quaternion.slerp(camera.quaternion, alphaRotate)
+                focusScaleTarget.copy(original.current.scale).multiplyScalar(mouthPoseActive ? 0.76 : 0.84)
             }
+            group.current.scale.lerp(focusScaleTarget, alphaMove)
         } else {
             group.current.position.lerp(original.current.pos, alphaMove)
             group.current.quaternion.slerp(original.current.quat, alphaRotate)
             group.current.scale.lerp(original.current.scale, alphaMove)
-            lastPos.current.copy(group.current.position)
         }
+
+        const movementDelta = group.current.position.distanceTo(lastPos.current)
+        const speed = movementDelta / Math.max(delta, 0.0001)
+        lastPos.current.copy(group.current.position)
+        desktopMotionRef.current.shakeSpeed = Math.max(0, desktopMotionRef.current.shakeSpeed - delta * 2.8)
+
+        const uprightScore = getUprightScore(group.current.quaternion, axesCache)
+        const mouthDistance = group.current.position.distanceTo(mouthTarget)
+        const thumbstickState = activeController?.gamepad?.['xr-standard-thumbstick']
+        const aButtonState = activeController?.gamepad?.['a-button']
+        const bButtonState = activeController?.gamepad?.['b-button']
+
+        // Context-aware desktop button mapping
+        const inhaleActive = (desktopPointerDown && currentStep?.validatorType === 'inhalePress') || (thumbstickState?.yAxis ?? 0) < -0.25
+        const breathOutActive =
+            (desktopPointerDown && (currentStep?.validatorType === 'breathOut' || currentStep?.validatorType === 'branchChoice')) ||
+            (thumbstickState?.yAxis ?? 0) > 0.25 ||
+            aButtonState?.state === 'pressed'
+        const holdBreathActive = (desktopPointerDown && currentStep?.validatorType === 'holdBreath') || bButtonState?.state === 'pressed'
+        
+        // Auto-press mechanism for desktop inhalation timing
+        if (desktopPointerDown && currentStep?.validatorType === 'inhalePress' && !hasAutoPressed.current) {
+            if ((currentStepRuntime?.inhaleLeadMs ?? 0) >= 500) {
+                attemptPrimaryAction()
+                hasAutoPressed.current = true
+            }
+        }
+
+        const stabilityScore = 1 - Math.min(1, speed / STABILITY_SPEED_MAX)
+        const shakeSpeed = Math.max(speed, desktopMotionRef.current.shakeSpeed)
+
+        syncTrainingInput({
+            deltaMs: delta * 1000,
+            inputMode: usingXRController ? 'xr' : 'desktop',
+            isXR: usingXRController,
+            shakeSpeed: isInhalerFocused ? shakeSpeed : 0,
+            uprightScore: isInhalerFocused ? uprightScore : 0,
+            headTilt: camera.rotation.x,
+            mouthDistance: isInhalerFocused ? mouthDistance : 1,
+            inhaleActive: isInhalerFocused ? inhaleActive : false,
+            breathOutActive: isInhalerFocused ? breathOutActive : false,
+            holdBreathActive: isInhalerFocused ? holdBreathActive : false,
+            stabilityScore: isInhalerFocused ? stabilityScore : 0,
+            inhalerPosition: group.current.position.toArray(),
+            mouthTargetPosition: mouthTarget.toArray(),
+            sessionPhase,
+        })
     })
 
     useFrame(() => {
         if (!group.current) return
         if (isInhalerFocused) {
-            if (isHovering) setIsHovering(false)
+            if (hoverRef.current) {
+                hoverRef.current = false
+                setIsHovering(false)
+            }
             return
         }
-        camera.getWorldDirection(forward)
-        raycaster.set(camera.position, forward)
+
+        if (xrMode === 'immersive-vr' && activeController?.object) {
+            activeController.object.updateWorldMatrix(true, false)
+            activeController.object.getWorldPosition(controllerRayPos)
+            controllerDir.set(0, 0, -1).applyQuaternion(activeController.object.quaternion)
+            raycaster.set(controllerRayPos, controllerDir)
+        } else {
+            camera.getWorldDirection(forward)
+            raycaster.set(camera.position, forward)
+        }
+
         const hits = raycaster.intersectObject(group.current, true)
-        setIsHovering(hits.length > 0)
+        const nextHover = hits.length > 0
+        if (nextHover !== hoverRef.current) {
+            hoverRef.current = nextHover
+            setIsHovering(nextHover)
+        }
     })
 
     const handleReturn = (event) => {
@@ -193,23 +426,16 @@ export function Inhaler(props) {
         if (isInhalerFocused) setInhalerFocused(false)
     }
 
-    // Handle click to advance through steps that require interaction
     const handleClick = (event) => {
-        // If not focused, focus first
-        if (!isInhalerFocused) {
-            setInhalerFocused(true)
+        if (isFromOverlayElement(event.target)) return
+        if (sessionPhase === 'idle' || sessionPhase === 'starting' || sessionPhase === 'completed') {
+            recordBeforeStartMistake()
             return
         }
 
-        // If focused, handle the current step's action
-        const step = TRAINING_STEPS[currentStep]
-        if (!step) return
-        if (step.action === 'click') {
-            advanceStep()
-        } else if (step.action === 'removeCap' && !isCapOff) {
-            setCapOff(true)
-        } else if (step.action === 'replaceCap' && isCapOff) {
-            setCapOff(false)
+        if (!isInhalerFocused) {
+            setInhalerFocused(true)
+            return
         }
     }
 
@@ -221,6 +447,55 @@ export function Inhaler(props) {
             onClick={handleClick}
             onContextMenu={handleReturn}
         >
+            <group visible={isTargeted} scale={1.045}>
+                <mesh geometry={nodes.mesh_0.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.12}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+                <mesh geometry={nodes.mesh_0_1.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.1}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+                <mesh geometry={nodes.mesh_0_15.geometry} rotation={[-1.864, 0, 0]} scale={0.91} renderOrder={20}>
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.1}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+                <mesh
+                    geometry={nodes.mesh_0_55.geometry}
+                    rotation={[-1.864, 0, 0]}
+                    scale={0.91}
+                    visible={!isCapOff}
+                    renderOrder={20}
+                >
+                    <meshBasicMaterial
+                        color="#ffd46b"
+                        transparent
+                        opacity={0.1}
+                        side={THREE.BackSide}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+            </group>
+
             <mesh geometry={nodes.mesh_0.geometry} material={materials.matalparts} rotation={[-1.864, 0, 0]} scale={0.91} />
             <mesh geometry={nodes.mesh_0_1.geometry} material={materials.tankinfo} rotation={[-1.864, 0, 0]} scale={0.91} />
             <mesh geometry={nodes.mesh_0_15.geometry} material={materials.lightblue} rotation={[-1.864, 0, 0]} scale={0.91} />
