@@ -15,6 +15,9 @@ const PANEL_DEPTH = 0.04
 const BUTTON_WIDTH = 0.52
 const BUTTON_HEIGHT = 0.16
 const FLOAT_AMPLITUDE = 0.015
+const HUD_DISTANCE = 1.35
+const HUD_FOLLOW_SPEED = 4.5
+const HUD_VERTICAL_OFFSET = -0.05
 
 function getButtonLabel(isStarting, hasStartError) {
     if (isStarting && !hasStartError) {
@@ -49,6 +52,9 @@ export function TrainingStartPanel3D(props) {
     const panelWorldPosition = useMemo(() => new THREE.Vector3(), [])
     const controllerDir = useMemo(() => new THREE.Vector3(), [])
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
+    const hudTarget = useMemo(() => new THREE.Vector3(), [])
+    const tempUp = useMemo(() => new THREE.Vector3(), [])
+    const localOrigin = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
     const { activePointerSource } = useXRHardwareState()
@@ -98,14 +104,40 @@ export function TrainingStartPanel3D(props) {
         const scale = 0.92 + opacity * 0.08
         root.current.scale.setScalar(scale)
         floatTimeRef.current += delta
-        root.current.position.y = 0.04 + Math.sin(floatTimeRef.current * 1.6) * FLOAT_AMPLITUDE
-        root.current.getWorldPosition(panelWorldPosition)
-        camera.getWorldPosition(lookTarget)
-        lookTarget.y = panelWorldPosition.y
-        if (root.current.parent) {
-            root.current.parent.worldToLocal(lookTarget)
+        
+        if (xrMode === 'immersive-vr') {
+            camera.getWorldPosition(lookTarget)
+            camera.getWorldDirection(forward)
+            tempUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize()
+
+            hudTarget
+                .copy(lookTarget)
+                .add(forward.clone().multiplyScalar(HUD_DISTANCE))
+                .add(tempUp.multiplyScalar(HUD_VERTICAL_OFFSET))
+
+            if (root.current.parent) {
+                root.current.parent.worldToLocal(hudTarget)
+                root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
+            } else {
+                root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
+            }
+
+            root.current.getWorldPosition(panelWorldPosition)
+            lookTarget.y = panelWorldPosition.y
+            if (root.current.parent) {
+                root.current.parent.worldToLocal(lookTarget)
+            }
+            root.current.lookAt(lookTarget)
+        } else {
+            root.current.position.y = 0.04 + Math.sin(floatTimeRef.current * 1.6) * FLOAT_AMPLITUDE
+            root.current.getWorldPosition(panelWorldPosition)
+            camera.getWorldPosition(lookTarget)
+            lookTarget.y = panelWorldPosition.y
+            if (root.current.parent) {
+                root.current.parent.worldToLocal(lookTarget)
+            }
+            root.current.lookAt(lookTarget)
         }
-        root.current.lookAt(lookTarget)
 
         const learningButton = root.current.getObjectByName('learning-button')
         const assessmentButton = root.current.getObjectByName('assessment-button')

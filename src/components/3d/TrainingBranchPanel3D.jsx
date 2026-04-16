@@ -13,6 +13,9 @@ const PANEL_HEIGHT = 0.58
 const PANEL_DEPTH = 0.04
 const BUTTON_WIDTH = 0.34
 const BUTTON_HEIGHT = 0.16
+const HUD_DISTANCE = 1.1
+const HUD_VERTICAL_OFFSET = -0.03
+const HUD_FOLLOW_SPEED = 6
 
 export function TrainingBranchPanel3D(props) {
     const root = useRef()
@@ -30,6 +33,10 @@ export function TrainingBranchPanel3D(props) {
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
+    const panelWorldPosition = useMemo(() => new THREE.Vector3(), [])
+    const hudTarget = useMemo(() => new THREE.Vector3(), [])
+    const localOrigin = useMemo(() => new THREE.Vector3(), [])
+    const tempUp = useMemo(() => new THREE.Vector3(), [])
     const controllerDir = useMemo(() => new THREE.Vector3(), [])
     const controllerPos = useMemo(() => new THREE.Vector3(), [])
 
@@ -63,8 +70,16 @@ export function TrainingBranchPanel3D(props) {
         const opacity = fadeRef.current
 
         root.current.scale.setScalar(0.92 + opacity * 0.08)
-        lookTarget.copy(camera.position)
-        root.current.lookAt(lookTarget)
+        
+        // Fixed positioning and orientation relative to its parent (the scene)
+        // We no longer lerp position or lookAt the camera every frame in VR
+        root.current.position.lerp(localOrigin, Math.min(1, delta * 10))
+        
+        // We still want it to face the general direction of the user at the start, 
+        // but for "fixed to environment" we should ideally set its rotation once or use a fixed one.
+        // However, if we just remove the lookAt from useFrame, it will use its initial rotation.
+        // In App.jsx, it's placed at [-2.35, 1.62, -0.55].
+        // Let's ensure it faces the spawning area.
 
         // In XR mode, raycast from the controller; on desktop, use camera gaze
         if (xrMode === 'immersive-vr' && activePointerSource?.object) {

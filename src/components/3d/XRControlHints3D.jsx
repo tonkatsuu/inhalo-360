@@ -109,8 +109,8 @@ export function XRControlHints3D() {
         trainingMode,
     } = useTrainingStore()
 
-    const { state: convaiState, audioControls } = useConvaiRuntime()
-    const isRecording = convaiState?.isConnected === true && audioControls?.isAudioMuted === false
+    const { state: convaiState, audioControls, isMicOpen } = useConvaiRuntime()
+    const isRecording = isMicOpen || (convaiState?.isConnected === true && audioControls?.isAudioMuted === false)
 
     const currentStep = getStepById(currentStepId)
     const isRunning = isSessionRunning(sessionPhase)
@@ -276,19 +276,31 @@ export function XRControlHints3D() {
                 </Text>
 
                 {/* Recording Indicator */}
-                {isRecording && (
-                    <Text
-                        position={[0, PANEL_HEIGHT / 2 + 0.05, 0.02]}
-                        fontSize={0.03}
-                        color="#ef4444"
-                        fontWeight="bold"
-                        textAlign="center"
-                        anchorX="center"
-                        anchorY="middle"
-                    >
-                        ● Recording...
-                    </Text>
-                )}
+                <group position={[0, PANEL_HEIGHT / 2 + 0.05, 0.02]}>
+                    {isRecording ? (
+                        <Text
+                            fontSize={0.03}
+                            color="#ef4444"
+                            fontWeight="bold"
+                            textAlign="center"
+                            anchorX="center"
+                            anchorY="middle"
+                        >
+                            ● LIVE: Recording...
+                        </Text>
+                    ) : (
+                        <Text
+                            fontSize={0.022}
+                            color={convaiState?.isConnected ? "#4ade80" : "#94a3b8"}
+                            textAlign="center"
+                            anchorX="center"
+                            anchorY="middle"
+                        >
+                            {convaiState?.isConnected ? "● Mic Ready (Hold X/Y to Talk)" : "● Mic Offline"}
+                        </Text>
+                    )}
+                </group>
+
                 {/* Locomotion Hint */}
                 <Text
                     position={[0, -PANEL_HEIGHT / 2 + 0.03, 0.02]}

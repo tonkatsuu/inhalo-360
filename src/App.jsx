@@ -163,7 +163,7 @@ export default function App() {
                             <Clipboard position={[-2, 1.02, -0.5]} scale={0.008} />
                         </ClinicRoom>
                         <TrainingStartPanel3D position={[-2.35, 1.7, -0.62]} />
-                        <TrainingBranchPanel3D position={[-2.35, 1.62, -0.55]} />
+                        <TrainingBranchPanel3D position={[-2.35, 1.62, -0.55]} rotation={[0, 0, 0]} />
                         <TrainingReviewPanel3D position={[-2.35, 1.78, -0.72]} />
                         <TrainingGuides3D />
                         <VideoPanel3D position={[-3.6, 1.72, -1.8]} />

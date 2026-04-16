@@ -34,6 +34,8 @@ export function ConvaiSpeechBillboard(props) {
         agentCaptionText,
         agentCaptionIsStreaming,
         agentDisplayName,
+        isMicOpen,
+        audioControls,
     } = useConvaiRuntime()
     const sessionPhase = useTrainingStore((store) => store.sessionPhase)
     const hasReviewOpen = useTrainingStore((store) => store.hasReviewOpen)
@@ -56,6 +58,7 @@ export function ConvaiSpeechBillboard(props) {
     const isListening = state?.agentState === 'listening'
     const isThinking = state?.isThinking === true
     const isSpeaking = state?.isSpeaking === true
+    const isRecording = isMicOpen || (!audioControls?.isAudioMuted && state?.isConnected)
 
     const isReadyOrActive = enabled && isConfigured && state?.isConnected
     
@@ -69,7 +72,7 @@ export function ConvaiSpeechBillboard(props) {
     
     const isRendered = isMounted
 
-    const headerText = isListening ? 'Listening...' : isThinking ? 'Thinking...' : agentDisplayName || 'Ava'
+    const headerText = isRecording ? 'LIVE' : isListening ? 'Listening...' : isThinking ? 'Thinking...' : agentDisplayName || 'Ava'
 
     const lineCount = Math.min(6, Math.max(1, Math.ceil((displayText || '...').length / 32)))
     const bubbleHeight = Math.max(0.35, 0.24 + lineCount * 0.08)
@@ -78,6 +81,7 @@ export function ConvaiSpeechBillboard(props) {
     const dotColor = useMemo(() => new THREE.Color('#4ade80'), [])
     const thinkingColor = useMemo(() => new THREE.Color('#fbbf24'), [])
     const listeningColor = useMemo(() => new THREE.Color('#38bdf8'), [])
+    const recordingColor = useMemo(() => new THREE.Color('#ef4444'), [])
     const idleColor = useMemo(() => new THREE.Color('#67cdec'), [])
 
     useFrame((_state, delta) => {
@@ -111,7 +115,13 @@ export function ConvaiSpeechBillboard(props) {
 
         if (dotMaterial.current) {
             dotMaterial.current.opacity = 0.9 * opacity
-            if (state?.agentState === 'listening') {
+            
+            if (isRecording) {
+                dotMaterial.current.color.copy(recordingColor)
+                // Pulse effect for recording
+                const pulse = 0.7 + Math.sin(_state.clock.elapsedTime * 6) * 0.3
+                dotMaterial.current.opacity = pulse * opacity
+            } else if (state?.agentState === 'listening') {
                 dotMaterial.current.color.copy(listeningColor)
             } else if (state?.isThinking) {
                 dotMaterial.current.color.copy(thinkingColor)
