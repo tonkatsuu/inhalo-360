@@ -1,10 +1,11 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useXR, useXRInputSourceState } from '@react-three/xr'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { BrandChip3D } from './BrandChip3D'
+import { useHoverSelectAction } from './useHoverSelectAction'
 
 const PANEL_WIDTH = 1.05
 const PANEL_HEIGHT = 0.58
@@ -47,28 +48,12 @@ export function TrainingBranchPanel3D(props) {
         dispatchTrainingAction({ type: 'branch-choice', choice: false })
     }, [dispatchTrainingAction])
 
-    useEffect(() => {
-        if (!isVisible) {
-            return undefined
-        }
+    const hoverHandlers = useMemo(() => ({
+        yes: chooseYes,
+        no: chooseNo,
+    }), [chooseNo, chooseYes])
 
-        const handlePointerDown = (event) => {
-            if (event.button !== 0) return
-            if (hoverRef.current === 'yes') {
-                event.preventDefault()
-                chooseYes()
-            }
-            if (hoverRef.current === 'no') {
-                event.preventDefault()
-                chooseNo()
-            }
-        }
-
-        window.addEventListener('pointerdown', handlePointerDown)
-        return () => {
-            window.removeEventListener('pointerdown', handlePointerDown)
-        }
-    }, [chooseNo, chooseYes, isVisible])
+    useHoverSelectAction(isVisible, hoverRef, hoverHandlers)
 
     useFrame((_state, delta) => {
         if (!root.current) {

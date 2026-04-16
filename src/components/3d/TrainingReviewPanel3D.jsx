@@ -1,11 +1,12 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useXR, useXRInputSourceState } from '@react-three/xr'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { buildAssessmentResults } from '../../training/assessment'
 import { BrandChip3D } from './BrandChip3D'
+import { useHoverSelectAction } from './useHoverSelectAction'
 
 const PANEL_WIDTH = 1.34
 const PANEL_HEIGHT = 1.12
@@ -124,36 +125,14 @@ export function TrainingReviewPanel3D(props) {
         setCurrentIssueIndex((index) => (reviewItems.length === 0 ? 0 : (index + 1) % reviewItems.length))
     }, [reviewItems.length])
 
-    useEffect(() => {
-        if (!isRendered) {
-            return undefined
-        }
+    const hoverHandlers = useMemo(() => ({
+        retry: handleRetry,
+        close: handleClose,
+        prev: handlePrevIssue,
+        next: handleNextIssue,
+    }), [handleClose, handleNextIssue, handlePrevIssue, handleRetry])
 
-        const handlePointerDown = (event) => {
-            if (event.button !== 0) return
-            if (hoverRef.current === 'retry') {
-                event.preventDefault()
-                handleRetry()
-            }
-            if (hoverRef.current === 'close') {
-                event.preventDefault()
-                handleClose()
-            }
-            if (hoverRef.current === 'prev') {
-                event.preventDefault()
-                handlePrevIssue()
-            }
-            if (hoverRef.current === 'next') {
-                event.preventDefault()
-                handleNextIssue()
-            }
-        }
-
-        window.addEventListener('pointerdown', handlePointerDown)
-        return () => {
-            window.removeEventListener('pointerdown', handlePointerDown)
-        }
-    }, [handleNextIssue, handlePrevIssue, handleRetry, handleClose, isRendered])
+    useHoverSelectAction(isRendered, hoverRef, hoverHandlers)
 
     useFrame((_state, delta) => {
         if (!isRendered || !root.current) {

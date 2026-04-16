@@ -1,10 +1,11 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useXR, useXRInputSourceState } from '@react-three/xr'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
+import { useHoverSelectAction } from './useHoverSelectAction'
 
 const WIDTH = 0.38
 const HEIGHT = 0.1
@@ -92,24 +93,11 @@ export function AssessmentEndPanel3D(props) {
         }
     }, [isVisible, finishAssessment])
 
-    useEffect(() => {
-        if (!isVisible) {
-            hoverRef.current = false
-            return undefined
-        }
+    const hoverHandlers = useMemo(() => ({
+        true: handleClick,
+    }), [handleClick])
 
-        const handlePointerDown = (event) => {
-            if (event.button !== 0) return
-            if (!hoverRef.current) return
-            event.preventDefault()
-            handleClick()
-        }
-
-        window.addEventListener('pointerdown', handlePointerDown)
-        return () => {
-            window.removeEventListener('pointerdown', handlePointerDown)
-        }
-    }, [handleClick, isVisible])
+    useHoverSelectAction(isVisible, hoverRef, hoverHandlers)
 
     if (!isVisible) return null
 

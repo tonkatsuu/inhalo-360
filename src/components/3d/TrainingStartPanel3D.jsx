@@ -1,11 +1,12 @@
 import { RoundedBox, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useXR, useXRInputSourceState } from '@react-three/xr'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { BrandChip3D } from './BrandChip3D'
+import { useHoverSelectAction } from './useHoverSelectAction'
 
 const PANEL_WIDTH = 1.2
 const PANEL_HEIGHT = 0.8
@@ -79,27 +80,12 @@ export function TrainingStartPanel3D(props) {
         startTraining('assessment')
     }, [canStart, startTraining, sessionPhase])
 
-    useEffect(() => {
-        if (!isRendered) {
-            return undefined
-        }
+    const hoverHandlers = useMemo(() => ({
+        learning: tryStartLearning,
+        assessment: tryStartAssessment,
+    }), [tryStartAssessment, tryStartLearning])
 
-        const handlePointerDown = (event) => {
-            if (event.button !== 0) return
-            if (hoverRef.current === 'learning') {
-                event.preventDefault()
-                tryStartLearning()
-            } else if (hoverRef.current === 'assessment') {
-                event.preventDefault()
-                tryStartAssessment()
-            }
-        }
-
-        window.addEventListener('pointerdown', handlePointerDown)
-        return () => {
-            window.removeEventListener('pointerdown', handlePointerDown)
-        }
-    }, [isRendered, tryStartLearning, tryStartAssessment])
+    useHoverSelectAction(isRendered, hoverRef, hoverHandlers)
 
     useFrame((_state, delta) => {
         if (!isRendered || !root.current) {
