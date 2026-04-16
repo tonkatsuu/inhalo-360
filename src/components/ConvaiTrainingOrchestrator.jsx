@@ -25,23 +25,21 @@ function buildCoachMessage(message, step) {
     }
 
     if (message.kind === 'completion') {
-        return 'The user completed the inhaler session. Congratulate them briefly, reinforce the key habits, and invite final questions.'
+        return 'The training session is complete. Congratulate the user briefly and invite final questions.'
     }
 
     if (message.kind === 'feedback') {
         return [
-            'The user needs corrective coaching on the current inhaler step.',
-            `Current step: ${step?.instruction ?? message.stepId}.`,
-            `Tell the user this correction in a calm pharmacist tone: "${message.prompt}".`,
-            'Keep it brief, specific, and action-oriented.',
+            'Guidance required:',
+            `"${message.prompt}"`,
+            'Deliver this instruction briefly and calmly.'
         ].join(' ')
     }
 
     return [
-        'The user is ready for the next inhaler training instruction.',
-        `Current step: ${step?.instruction ?? message.stepId}.`,
-        `Tell the user this instruction in a pharmacist coaching tone: "${message.prompt}".`,
-        'Keep it concise and focused on the immediate action only.',
+        'Next instruction:',
+        `"${message.prompt}"`,
+        'State this instruction accurately and concisely.'
     ].join(' ')
 }
 
@@ -212,11 +210,7 @@ export function ConvaiTrainingOrchestrator() {
             return
         }
 
-        if (!enabled || !isConfigured) {
-            return
-        }
-
-        if (!state?.isConnected) {
+        if (!enabled || !isConfigured || !state?.isConnected) {
             return
         }
 
@@ -225,22 +219,32 @@ export function ConvaiTrainingOrchestrator() {
             return
         }
 
-        const step = getStepById(pendingCoachMessage.stepId ?? currentStepId)
-        const coachMessage = buildCoachMessage(pendingCoachMessage, step)
-        if (!coachMessage) {
-            acknowledgeCoachMessage(pendingCoachMessage.key)
+        // If the AI is currently active, interrupt the active stream and WAIT.
+        // The effect will re-run once state.isSpeaking/isThinking resolve to false.
+        if (state?.isSpeaking || state?.isThinking) {
+            interrupt()
             return
         }
 
-        if (state?.isSpeaking || state?.isThinking) {
-            interrupt()
-        }
+        // Wait a brief moment to debounce rapid step skipping.
+        // If the user advances quickly, this timeout clears and only the latest step prompt is sent.
+        const timeoutId = window.setTimeout(() => {
+            const step = getStepById(pendingCoachMessage.stepId ?? currentStepId)
+            const coachMessage = buildCoachMessage(pendingCoachMessage, step)
+            
+            if (coachMessage) {
+                sendUserTextMessage(coachMessage)
+            }
+            
+            acknowledgeCoachMessage(pendingCoachMessage.key)
+        }, 400)
 
-        sendUserTextMessage(coachMessage)
-        acknowledgeCoachMessage(pendingCoachMessage.key)
+        // Cleanup: cancels the timeout if the user skips again, dropping the stale message.
+        return () => {
+            window.clearTimeout(timeoutId)
+        }
     }, [
         acknowledgeCoachMessage,
-        client,
         currentStepId,
         enabled,
         interrupt,
@@ -251,6 +255,7 @@ export function ConvaiTrainingOrchestrator() {
         state?.isConnected,
         state?.isSpeaking,
         state?.isThinking,
+        trainingMode,
     ])
 
     return null

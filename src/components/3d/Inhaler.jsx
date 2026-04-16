@@ -92,6 +92,7 @@ export function Inhaler(props) {
         setInhalerFocused,
         setLastUserAction,
         syncTrainingInput,
+        setClipboardFocused,
     } = useTrainingStore()
 
     const currentStep = getStepById(currentStepId)
@@ -191,6 +192,9 @@ export function Inhaler(props) {
                     return
                 }
                 event.preventDefault()
+                if (xrMode !== 'immersive-vr') {
+                    setClipboardFocused(false)
+                }
                 setInhalerFocused(true)
                 return
             }
@@ -231,7 +235,7 @@ export function Inhaler(props) {
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
             window.removeEventListener('pointerup', handleGlobalPointerUp)
         }
-    }, [attemptPrimaryAction, currentStep?.validatorType, isHovering, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setInhalerFocused, xrMode])
+    }, [attemptPrimaryAction, currentStep?.validatorType, isHovering, isInhalerFocused, recordBeforeStartMistake, sessionPhase, setInhalerFocused, setClipboardFocused, xrMode])
 
     useEffect(() => {
         const handleMouseMove = (event) => {
@@ -434,6 +438,9 @@ export function Inhaler(props) {
         }
 
         if (!isInhalerFocused) {
+            if (xrMode !== 'immersive-vr') {
+                setClipboardFocused(false)
+            }
             setInhalerFocused(true)
             return
         }

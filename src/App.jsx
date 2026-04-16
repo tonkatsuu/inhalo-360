@@ -131,7 +131,7 @@ export default function App() {
                             convaiAvatar={
                                 showConvaiAvatar ? (
                                     <React.Suspense fallback={null}>
-                                        <ConvaiAvatar scale={[1.12, 1.08, 1.12]} />
+                                        <ConvaiAvatar scale={[1.25, 1.22, 1.25]} />
                                     </React.Suspense>
                                 ) : null
                             }

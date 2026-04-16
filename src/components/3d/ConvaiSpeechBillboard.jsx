@@ -1,9 +1,13 @@
 import { Billboard, RoundedBox, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useMemo, useRef, useState } from 'react'
+import { useXR } from '@react-three/xr'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
+
+const PANEL_RENDER_ORDER = 30
+const TEXT_RENDER_ORDER = 31
 
 function clampCaption(text) {
     return typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : ''
@@ -13,42 +17,66 @@ export function ConvaiSpeechBillboard(props) {
     const group = useRef()
     const bubbleMaterial = useRef()
     const shadowMaterial = useRef()
+    const borderMaterial = useRef()
     const chipMaterial = useRef()
     const dotMaterial = useRef()
     const [isMounted, setIsMounted] = useState(false)
+    const [lastMessage, setLastMessage] = useState('Ask Ava a question...')
     const visibilityRef = useRef(0)
 
+    const xrMode = useXR((state) => state.mode)
     const {
+        enabled,
+        isConfigured,
         state,
         agentCaptionText,
-        agentCaptionVisible,
         agentCaptionIsStreaming,
         agentDisplayName,
     } = useConvaiRuntime()
     const sessionPhase = useTrainingStore((store) => store.sessionPhase)
     const hasReviewOpen = useTrainingStore((store) => store.hasReviewOpen)
+    const isClipboardFocused = useTrainingStore((store) => store.isClipboardFocused)
 
-    const statusText =
-        state?.agentState === 'listening'
-            ? 'Listening...'
-            : state?.isThinking
-                ? 'Thinking...'
-                : state?.isSpeaking
-                    ? 'Speaking...'
-                    : ''
+    useEffect(() => {
+        setIsMounted(true)
+    }, [])
 
-    const bodyText = clampCaption(agentCaptionText || statusText || (state?.isSpeaking ? '...' : ''))
-    const shouldBeVisible =
-        agentCaptionVisible ||
-        state?.isSpeaking === true ||
-        state?.isThinking === true ||
-        state?.agentState === 'listening'
-    const isRendered = isMounted || shouldBeVisible
-    const lineCount = Math.min(8, Math.max(1, Math.ceil((bodyText || '...').length / 38)))
-    const bubbleHeight = 0.26 + lineCount * 0.12
+    useEffect(() => {
+        const text = clampCaption(agentCaptionText)
+        if (text) {
+            setLastMessage(text)
+        }
+    }, [agentCaptionText])
+
+    const isXR = xrMode === 'immersive-vr'
+    const interactionCopy = isXR ? 'Hold X or Y on left controller to talk' : 'Hold Space to talk'
+
+    const isListening = state?.agentState === 'listening'
+    const isThinking = state?.isThinking === true
+    const isSpeaking = state?.isSpeaking === true
+
+    const isReadyOrActive = enabled && isConfigured && state?.isConnected
+    
+    // Idle means connected, not processing speech, and not looking at clipboard.
+    const isIdle = isReadyOrActive && !isListening && !isThinking && !isSpeaking && !isClipboardFocused
+
+    const shouldBeVisible = isReadyOrActive && !isClipboardFocused && !(sessionPhase === 'completed' && hasReviewOpen)
+
+    const currentCaption = clampCaption(agentCaptionText)
+    const displayText = (isSpeaking && currentCaption) ? currentCaption : lastMessage
+    
+    const isRendered = isMounted
+
+    const headerText = isListening ? 'Listening...' : isThinking ? 'Thinking...' : agentDisplayName || 'Ava'
+
+    const lineCount = Math.min(6, Math.max(1, Math.ceil((displayText || '...').length / 32)))
+    const bubbleHeight = Math.max(0.35, 0.24 + lineCount * 0.08)
+    const bubbleWidth = 1.15
+
     const dotColor = useMemo(() => new THREE.Color('#4ade80'), [])
     const thinkingColor = useMemo(() => new THREE.Color('#fbbf24'), [])
     const listeningColor = useMemo(() => new THREE.Color('#38bdf8'), [])
+    const idleColor = useMemo(() => new THREE.Color('#67cdec'), [])
 
     useFrame((_state, delta) => {
         if (!isRendered || !group.current) {
@@ -56,23 +84,27 @@ export function ConvaiSpeechBillboard(props) {
         }
 
         visibilityRef.current = THREE.MathUtils.damp(visibilityRef.current, shouldBeVisible ? 1 : 0, 9, delta)
-        const opacity = visibilityRef.current
-        const scale = 0.9 + opacity * 0.1
+        const opacity = Math.max(0, Math.min(1, visibilityRef.current))
+        const scale = 0.95 + opacity * 0.05
 
-        group.current.scale.setScalar(scale)
+        group.current.scale.setScalar(Math.max(0.001, scale * Math.pow(opacity, 0.5)))
+        // Anchor vertically to roughly the middle, perhaps slight float
+        group.current.position.y = (bubbleHeight / 2) - 0.15
 
         if (bubbleMaterial.current) {
-            bubbleMaterial.current.opacity = 0.55 * opacity
-            bubbleMaterial.current.emissive.set('#000000')
-            bubbleMaterial.current.emissiveIntensity = 0
+            bubbleMaterial.current.opacity = 0.82 * opacity
+        }
+
+        if (borderMaterial.current) {
+            borderMaterial.current.opacity = 0.6 * opacity
         }
 
         if (shadowMaterial.current) {
-            shadowMaterial.current.opacity = 0.32 * opacity
+            shadowMaterial.current.opacity = 0.18 * opacity
         }
 
         if (chipMaterial.current) {
-            chipMaterial.current.opacity = 0.7 * opacity
+            chipMaterial.current.opacity = 0.72 * opacity
         }
 
         if (dotMaterial.current) {
@@ -81,13 +113,11 @@ export function ConvaiSpeechBillboard(props) {
                 dotMaterial.current.color.copy(listeningColor)
             } else if (state?.isThinking) {
                 dotMaterial.current.color.copy(thinkingColor)
+            } else if (isIdle) {
+                dotMaterial.current.color.copy(idleColor)
             } else {
                 dotMaterial.current.color.copy(dotColor)
             }
-        }
-
-        if (!shouldBeVisible && opacity < 0.02) {
-            setIsMounted(false)
         }
     })
 
@@ -102,52 +132,98 @@ export function ConvaiSpeechBillboard(props) {
     return (
         <Billboard {...props} follow lockX={false} lockY={false} lockZ={false}>
             <group ref={group}>
-                <RoundedBox args={[1.49, bubbleHeight + 0.04, 0.02]} radius={0.055} smoothness={6} position={[0, 0, -0.018]}>
-                    <meshStandardMaterial ref={shadowMaterial} color="#041018" transparent opacity={0.32} />
+                {/* Shadow */}
+                <RoundedBox
+                    args={[bubbleWidth + 0.04, bubbleHeight + 0.04, 0.018]}
+                    radius={0.045}
+                    smoothness={6}
+                    position={[0, 0, -0.015]}
+                    renderOrder={PANEL_RENDER_ORDER}
+                >
+                    <meshStandardMaterial ref={shadowMaterial} color="#041018" transparent opacity={0.18} depthTest={false} depthWrite={false} />
                 </RoundedBox>
 
-                <RoundedBox args={[1.45, bubbleHeight, 0.03]} radius={0.05} smoothness={6}>
+                {/* Border */}
+                <RoundedBox
+                    args={[bubbleWidth, bubbleHeight, 0.022]}
+                    radius={0.04}
+                    smoothness={6}
+                    position={[0, 0, -0.008]}
+                    renderOrder={PANEL_RENDER_ORDER}
+                >
+                    <meshStandardMaterial ref={borderMaterial} color="#274556" transparent opacity={0.6} depthTest={false} depthWrite={false} />
+                </RoundedBox>
+
+                {/* Background */}
+                <RoundedBox args={[bubbleWidth - 0.03, bubbleHeight - 0.03, 0.024]} radius={0.035} smoothness={6} renderOrder={PANEL_RENDER_ORDER}>
                     <meshStandardMaterial
                         ref={bubbleMaterial}
                         color="#0b1620"
                         transparent
-                        opacity={0.55}
+                        opacity={0.82}
                         roughness={0.9}
                         metalness={0.02}
+                        depthTest={false}
+                        depthWrite={false}
                     />
                 </RoundedBox>
 
-                <group position={[-0.34, bubbleHeight * 0.5 - 0.09, 0.03]}>
-                    <RoundedBox args={[0.58, 0.13, 0.02]} radius={0.045} smoothness={4}>
-                        <meshStandardMaterial ref={chipMaterial} color="#102734" transparent opacity={0.7} />
+                {/* Header Chip */}
+                <group position={[-(bubbleWidth * 0.5) + 0.28, bubbleHeight * 0.5 - 0.06, 0.02]}>
+                    <RoundedBox args={[0.48, 0.08, 0.016]} radius={0.03} smoothness={4} renderOrder={PANEL_RENDER_ORDER}>
+                        <meshStandardMaterial ref={chipMaterial} color="#102734" transparent opacity={0.72} depthTest={false} depthWrite={false} />
                     </RoundedBox>
-                    <mesh position={[-0.22, 0, 0.015]}>
-                        <sphereGeometry args={[0.024, 18, 18]} />
-                        <meshStandardMaterial ref={dotMaterial} color="#4ade80" transparent opacity={0.9} />
+                    <mesh position={[-0.18, 0, 0.014]} renderOrder={TEXT_RENDER_ORDER}>
+                        <sphereGeometry args={[0.014, 16, 16]} />
+                        <meshStandardMaterial ref={dotMaterial} color="#4ade80" transparent opacity={0.9} depthTest={false} depthWrite={false} />
                     </mesh>
                     <Text
-                        position={[0.04, -0.002, 0.02]}
-                        fontSize={0.055}
+                        position={[0.025, -0.002, 0.018]}
+                        fontSize={0.032}
                         anchorX="center"
                         anchorY="middle"
                         color="#f8fafc"
+                        depthTest={false}
+                        depthWrite={false}
+                        renderOrder={TEXT_RENDER_ORDER}
                     >
-                        {agentDisplayName}
+                        {headerText}
                     </Text>
                 </group>
 
+                {/* Main Text Body */}
                 <Text
-                    position={[0, -0.03, 0.035]}
-                    fontSize={0.051}
-                    maxWidth={1.15}
+                    position={[0, 0.02, 0.022]}
+                    fontSize={0.042}
+                    maxWidth={bubbleWidth - 0.15}
                     lineHeight={1.2}
                     anchorX="center"
                     anchorY="middle"
                     textAlign="center"
-                    color={agentCaptionIsStreaming ? '#f8fafc' : '#d9e5f0'}
+                    color={agentCaptionIsStreaming && !isIdle ? '#ffffff' : '#f8fafc'}
                     overflowWrap="break-word"
+                    depthTest={false}
+                    depthWrite={false}
+                    renderOrder={TEXT_RENDER_ORDER}
                 >
-                    {bodyText || '...'}
+                    {displayText}
+                </Text>
+
+                {/* Footer Interaction Instruction */}
+                <Text
+                    position={[0, -(bubbleHeight * 0.5) + 0.05, 0.022]}
+                    fontSize={0.026}
+                    maxWidth={0.8}
+                    lineHeight={1.12}
+                    anchorX="center"
+                    anchorY="middle"
+                    textAlign="center"
+                    color="#a9c4d3"
+                    depthTest={false}
+                    depthWrite={false}
+                    renderOrder={TEXT_RENDER_ORDER}
+                >
+                    {interactionCopy}
                 </Text>
             </group>
         </Billboard>

@@ -2,7 +2,6 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
-import { ConvaiInteractionHint3D } from './ConvaiInteractionHint3D'
 import { ConvaiSpeechBillboard } from './ConvaiSpeechBillboard'
 
 const AVATAR_MODEL_URL =
@@ -167,8 +166,7 @@ export function ConvaiAvatar(props) {
 
     return (
         <group {...props} dispose={null}>
-            <ConvaiSpeechBillboard position={[0, 2.05, 0]} />
-            <ConvaiInteractionHint3D position={[0.92, 1.36, -0.18]} />
+            <ConvaiSpeechBillboard position={[1.15, 1.35, 0.15]} />
             <primitive object={nodes.Hips} />
             {Object.values(nodes).map((node, index) =>
                 node.isMesh ? (

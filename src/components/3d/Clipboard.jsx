@@ -75,6 +75,7 @@ export function Clipboard(props) {
         sessionPhase,
         recordMistake,
         trainingMode,
+        setInhalerFocused,
     } = useTrainingStore()
 
     const visibleSteps = getVisibleTrainingSteps(secondDoseChoice)
@@ -144,6 +145,9 @@ export function Clipboard(props) {
             }
             if (event.button === 0 && !isClipboardFocused && isHovering && isSessionRunning(sessionPhase)) {
                 event.preventDefault()
+                if (xrMode !== 'immersive-vr') {
+                    setInhalerFocused(false)
+                }
                 setClipboardFocused(true)
             }
         }
@@ -154,7 +158,7 @@ export function Clipboard(props) {
             window.removeEventListener('contextmenu', handleGlobalDrop)
             window.removeEventListener('pointerdown', handleGlobalPointerDown)
         }
-    }, [currentStepId, isClipboardFocused, isHovering, recordMistake, sessionPhase, setClipboardFocused])
+    }, [currentStepId, isClipboardFocused, isHovering, recordMistake, sessionPhase, setClipboardFocused, setInhalerFocused, xrMode])
 
     useFrame((_state, delta) => {
         if (!group.current) return
@@ -228,7 +232,12 @@ export function Clipboard(props) {
             })
             return
         }
-        if (!isClipboardFocused) setClipboardFocused(true)
+        if (!isClipboardFocused) {
+            if (xrMode !== 'immersive-vr') {
+                setInhalerFocused(false)
+            }
+            setClipboardFocused(true)
+        }
     }
 
     const handleReturn = (event) => {
