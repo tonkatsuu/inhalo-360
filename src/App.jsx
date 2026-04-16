@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { XR, createXRStore } from '@react-three/xr'
+import { XR, createXRStore, useXR } from '@react-three/xr'
 import * as THREE from 'three'
 import { Inhaler } from './components/3d/Inhaler'
 import { Clipboard } from './components/3d/Clipboard'
 import { ClinicRoom } from './components/3d/Clinic_vr_scene'
 import { ConvaiAvatar } from './components/3d/ConvaiAvatar'
 import { FpsControls } from './components/3d/FpsControls'
+import { VRLocomotion } from './components/3d/VRLocomotion'
 import { TrainingStartPanel3D } from './components/3d/TrainingStartPanel3D'
 import { TrainingReviewPanel3D } from './components/3d/TrainingReviewPanel3D'
 import { TrainingBranchPanel3D } from './components/3d/TrainingBranchPanel3D'
@@ -59,6 +60,16 @@ function Crosshair() {
 const store = createXRStore()
 const convaiConfig = readConvaiConfig()
 const showConvaiAvatar = convaiConfig.enabled && convaiConfig.isConfigured
+
+function ActiveVRLocomotion() {
+    const xrMode = useXR((state) => state.mode)
+
+    if (xrMode !== 'immersive-vr') {
+        return null
+    }
+
+    return <VRLocomotion store={store} />
+}
 
 export default function App() {
     const [collisionLayout, setCollisionLayout] = useState(null)
@@ -128,6 +139,7 @@ export default function App() {
                         <VideoPanel3D position={[-3.6, 1.72, -1.8]} />
                         <XRControlHints3D position={[-1.55, 1.88, -0.15]} />
                         <AssessmentEndPanel3D position={[-2.35, 1.4, -0.15]} />
+                        <ActiveVRLocomotion />
                         <FpsControls canLockPointer collisionLayout={collisionLayout} />
                         <ConvaiXRMicControls />
                     </XR>
