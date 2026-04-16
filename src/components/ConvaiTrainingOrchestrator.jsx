@@ -83,6 +83,10 @@ export function ConvaiTrainingOrchestrator() {
         clearSessionError,
         trainingMode,
     } = useTrainingStore()
+    
+    useEffect(() => {
+        console.log('[ConvaiOrchestrator] state updated:', state)
+    }, [state])
 
     const connectRequestedRef = useRef(false)
     const isBotReadyRef = useRef(false)
@@ -93,6 +97,7 @@ export function ConvaiTrainingOrchestrator() {
         }
 
         const unsubscribeBotReady = client.on('botReady', () => {
+            console.log('[ConvaiOrchestrator] botReady event fired')
             isBotReadyRef.current = true
             const trainingState = useTrainingStore.getState()
             if (trainingState.sessionPhase === 'starting') {
@@ -102,11 +107,13 @@ export function ConvaiTrainingOrchestrator() {
         })
 
         const unsubscribeDisconnect = client.on('disconnect', () => {
+            console.log('[ConvaiOrchestrator] disconnect event fired')
             isBotReadyRef.current = false
             connectRequestedRef.current = false
         })
 
         const unsubscribeError = client.on('error', (error) => {
+            console.error('[ConvaiOrchestrator] client error event', error)
             const trainingState = useTrainingStore.getState()
             if (trainingState.sessionPhase === 'starting') {
                 trainingState.setSessionError(formatConvaiError(error))
@@ -140,7 +147,9 @@ export function ConvaiTrainingOrchestrator() {
             return
         }
 
-        if (state?.isConnected && (client?.isBotReady || isBotReadyRef.current)) {
+        // We use state?.isConnected instead of waiting for isBotReady because 
+        // the botReady data channel event can sometimes be dropped by LiveKit
+        if (state?.isConnected) {
             clearSessionError()
             markTrainingActive()
             return
@@ -152,14 +161,38 @@ export function ConvaiTrainingOrchestrator() {
 
         connectRequestedRef.current = true
         clearSessionError()
-        connect().catch((error) => {
-            connectRequestedRef.current = false
-            setSessionError(formatConvaiError(error))
-        })
+        console.log('[ConvaiOrchestrator] calling connect()…', { enabled, isConfigured, isConnected: state?.isConnected })
+        
+        let timeoutId;
+        const connectPromise = connect()
+            .then(() => { 
+                console.log('[ConvaiOrchestrator] connect() resolved', { isConnected: state?.isConnected, isBotReady: client?.isBotReady })
+                
+                // Add a fallback timeout in case botReady never fires (e.g. invalid character ID)
+                timeoutId = window.setTimeout(() => {
+                    const currentState = useTrainingStore.getState()
+                    if (currentState.sessionPhase === 'starting') {
+                        console.error('[ConvaiOrchestrator] Connection timeout. botReady event was not received.')
+                        connectRequestedRef.current = false
+                        currentState.setSessionError('Connection timeout. Please verify your Character ID and API Key, and ensure your dev server is restarted if you recently updated your .env file.')
+                    }
+                }, 15000)
+            })
+            .catch((error) => {
+                console.error('[ConvaiOrchestrator] connect() rejected', error)
+                connectRequestedRef.current = false
+                setSessionError(formatConvaiError(error))
+            })
+
+        return () => {
+            if (timeoutId) {
+                window.clearTimeout(timeoutId)
+            }
+        }
     }, [clearSessionError, client, connect, enabled, isConfigured, markTrainingActive, sessionPhase, setSessionError, state?.isConnected])
 
     useEffect(() => {
-        if (trainingMode === 'assessment' || !enabled || !isConfigured || !state?.isConnected || !(client?.isBotReady || isBotReadyRef.current)) {
+        if (trainingMode === 'assessment' || !enabled || !isConfigured || !state?.isConnected) {
             return
         }
 
@@ -183,7 +216,7 @@ export function ConvaiTrainingOrchestrator() {
             return
         }
 
-        if (!state?.isConnected || !(client?.isBotReady || isBotReadyRef.current)) {
+        if (!state?.isConnected) {
             return
         }
 
