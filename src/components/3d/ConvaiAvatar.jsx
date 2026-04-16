@@ -6,7 +6,7 @@ import { ConvaiInteractionHint3D } from './ConvaiInteractionHint3D'
 import { ConvaiSpeechBillboard } from './ConvaiSpeechBillboard'
 
 const AVATAR_MODEL_URL =
-    'https://models.readyplayer.me/661feb3563b4a87a148eb0df.glb?morphTargets=ARKit,Oculus%20Visemes'
+    'https://cdn.jsdelivr.net/gh/c-frame/valid-avatars-glb@c539a28/avatars/MENA/MENA_F_1_Medi.glb'
 
 const ARKIT_NAMES = [
     'eyeBlinkLeft', 'eyeLookDownLeft', 'eyeLookInLeft', 'eyeLookOutLeft', 'eyeLookUpLeft',
