@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { BrandChip3D } from './BrandChip3D'
+import { faceCameraUpright } from './faceCameraUpright'
 import { useHoverSelectAction } from './useHoverSelectAction'
 import { useXRHardwareState } from './useXRHardwareState'
 
@@ -49,7 +50,6 @@ export function TrainingStartPanel3D(props) {
     const raycaster = useMemo(() => new THREE.Raycaster(), [])
     const forward = useMemo(() => new THREE.Vector3(), [])
     const lookTarget = useMemo(() => new THREE.Vector3(), [])
-    const panelWorldPosition = useMemo(() => new THREE.Vector3(), [])
     const controllerDir = useMemo(() => new THREE.Vector3(), [])
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
     const hudTarget = useMemo(() => new THREE.Vector3(), [])
@@ -122,21 +122,10 @@ export function TrainingStartPanel3D(props) {
                 root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
             }
 
-            root.current.getWorldPosition(panelWorldPosition)
-            lookTarget.y = panelWorldPosition.y
-            if (root.current.parent) {
-                root.current.parent.worldToLocal(lookTarget)
-            }
-            root.current.lookAt(lookTarget)
+            faceCameraUpright(root.current, camera)
         } else {
             root.current.position.y = 0.04 + Math.sin(floatTimeRef.current * 1.6) * FLOAT_AMPLITUDE
-            root.current.getWorldPosition(panelWorldPosition)
-            camera.getWorldPosition(lookTarget)
-            lookTarget.y = panelWorldPosition.y
-            if (root.current.parent) {
-                root.current.parent.worldToLocal(lookTarget)
-            }
-            root.current.lookAt(lookTarget)
+            faceCameraUpright(root.current, camera)
         }
 
         const learningButton = root.current.getObjectByName('learning-button')

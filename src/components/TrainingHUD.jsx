@@ -26,7 +26,7 @@ function getStatusText(sessionPhase, sessionError) {
     }
 
     if (sessionPhase === 'branching') {
-        return 'Choose whether a second dose is needed'
+        return 'Breathe out first, then choose yes or no for a second dose'
     }
 
     if (sessionPhase === 'completed') {
@@ -69,6 +69,11 @@ function getDesktopFlowPreview(steps, currentStepId) {
 
 export function TrainingHUD() {
     const {
+        assessmentChecklist,
+        assessmentListening,
+        assessmentSpeechStatus,
+        assessmentSpeechError,
+        assessmentSpeechSupported,
         currentStepId,
         completedSteps,
         isTrainingComplete,
@@ -94,6 +99,7 @@ export function TrainingHUD() {
     const controlHints = getControlHints(inputMode, currentStep)
     const desktopFlowPreview = getDesktopFlowPreview(visibleSteps, currentStepId)
     const showLiveTraining = isSessionRunning(sessionPhase) || sessionPhase === 'completed'
+    const completedAssessmentCount = assessmentChecklist.length
     
     const isDesktop = inputMode !== 'xr'
 
@@ -142,8 +148,30 @@ export function TrainingHUD() {
                     )}
                     {isAssessment && (
                         <div style={{ color: '#4b7a8c', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: '#4b7a8c' }} />
-                            LISTENING
+                            <div
+                                className="pulse-dot"
+                                style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: '50%',
+                                    background: !assessmentSpeechSupported
+                                        ? '#b91c1c'
+                                        : assessmentSpeechError
+                                            ? '#f59e0b'
+                                            : assessmentListening
+                                                ? '#22c55e'
+                                                : '#4b7a8c',
+                                }}
+                            />
+                            {!assessmentSpeechSupported
+                                ? 'UNSUPPORTED'
+                                : assessmentSpeechStatus === 'starting'
+                                    ? 'STARTING'
+                                : assessmentSpeechError
+                                    ? 'MIC ISSUE'
+                                    : assessmentListening
+                                        ? 'HOT MIC'
+                                        : 'IDLE'}
                         </div>
                     )}
                     {inputMode === 'xr' ? 'Quest / XR' : 'Desktop'}
@@ -164,6 +192,25 @@ export function TrainingHUD() {
                     }}
                 >
                     {statusText}
+                </div>
+            )}
+
+            {isAssessment && !isTrainingComplete && (
+                <div
+                    style={{
+                        marginBottom: 12,
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        background: 'rgba(93, 128, 143, 0.08)',
+                        color: sessionError ? '#b84747' : '#506976',
+                        lineHeight: 1.45,
+                        fontSize: 13,
+                    }}
+                >
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                        Assessment Progress: {completedAssessmentCount}/{visibleSteps.length} completed
+                    </div>
+                    <div>{liveHint}</div>
                 </div>
             )}
 

@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { buildAssessmentResults } from '../../training/assessment'
 import { BrandChip3D } from './BrandChip3D'
+import { faceCameraUpright } from './faceCameraUpright'
 import { useHoverSelectAction } from './useHoverSelectAction'
 import { useXRHardwareState } from './useXRHardwareState'
 
@@ -86,6 +87,20 @@ export function TrainingReviewPanel3D(props) {
     const reviewItems = isAssessment 
         ? [
             { id: 'score', title: `Final Score: ${assessmentResults?.score}%`, detail: assessmentResults?.isPass ? 'Excellent work! You have mastered the technique.' : 'Keep practicing to improve your accuracy and narration.' },
+            {
+                id: 'completed',
+                title: `Completed ${assessmentResults?.completedCount ?? 0} of ${assessmentResults?.totalSteps ?? 0} steps`,
+                detail: assessmentResults?.completedLabels?.length
+                    ? assessmentResults.completedLabels.join(', ')
+                    : 'No steps were fully completed before the assessment ended.',
+            },
+            {
+                id: 'sequence',
+                title: assessmentResults?.completedInSequence ? 'Sequence Maintained' : 'Sequence Needs Review',
+                detail: assessmentResults?.completedInSequence
+                    ? 'Completed steps were carried out in the expected order.'
+                    : 'One or more accepted steps were recorded out of order.',
+            },
             ...(assessmentResults?.missedSteps.length > 0 ? [{ id: 'missed', title: 'Steps Missed', detail: assessmentResults.missedSteps.join(', ') }] : []),
             ...(assessmentResults?.outOfOrderSteps.length > 0 ? [{ id: 'order', title: 'Performed Out of Order', detail: assessmentResults.outOfOrderSteps.join(', ') }] : []),
             ...(assessmentResults?.speechMisses.length > 0 ? [{ id: 'speech', title: 'Narration Needed', detail: assessmentResults.speechMisses.join(', ') }] : []),
@@ -167,15 +182,10 @@ export function TrainingReviewPanel3D(props) {
                 root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
             }
 
-            // In VR, look directly at camera (position lerping is handled above)
-            root.current.lookAt(lookTarget)
+            faceCameraUpright(root.current, camera)
         } else {
             root.current.position.y = 0.03 + Math.sin(floatTimeRef.current * 1.4) * FLOAT_AMPLITUDE
-            camera.getWorldPosition(lookTarget)
-            if (root.current.parent) {
-                root.current.parent.worldToLocal(lookTarget)
-            }
-            root.current.lookAt(lookTarget)
+            faceCameraUpright(root.current, camera)
         }
 
         if (xrMode === 'immersive-vr' && activePointerSource?.object) {

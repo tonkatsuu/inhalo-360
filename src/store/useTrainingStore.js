@@ -11,7 +11,7 @@ import {
     getVisibleTrainingSteps,
     isSessionRunning,
     summarizeStepResult,
-} from '../training/engine'
+} from '../training/engine.js'
 
 function buildCoachMessageKey(message) {
     return `${message.kind}:${message.stepId ?? 'none'}:${Date.now()}`
@@ -21,10 +21,31 @@ function buildMistakeId() {
     return `mistake:${Date.now()}:${Math.random().toString(36).slice(2, 9)}`
 }
 
+function getAssessmentLiveHint(sessionPhase) {
+    if (sessionPhase === 'awaitingNarration') {
+        return 'Action detected. Say what you just did to unlock the next step.'
+    }
+
+    if (sessionPhase === 'feedback') {
+        return 'That attempt was not accepted. Continue the assessment from the current step without prompts.'
+    }
+
+    if (sessionPhase === 'completed') {
+        return 'Assessment complete. Review your results.'
+    }
+
+    return 'Perform the inhaler sequence from memory and say each action out loud as you do it.'
+}
+
 function getInteractivePhaseFromOutcome(outcomeStatus) {
     if (outcomeStatus === 'validating') return 'validating'
     if (outcomeStatus === 'branching') return 'branching'
     return 'awaitingAction'
+}
+
+function isSameXRGrabOwner(left, right) {
+    if (!left || !right) return false
+    return left.type === right.type && left.handedness === right.handedness
 }
 
 function getInitialState() {
@@ -38,6 +59,10 @@ function getInitialState() {
         isCapOff: false,
         isInhalerFocused: false,
         isClipboardFocused: false,
+        xrGrabOwners: {
+            inhaler: null,
+            clipboard: null,
+        },
         hasTrainingStarted: false,
         hasReviewOpen: false,
         isTrainingComplete: false,
@@ -70,6 +95,13 @@ function getInitialState() {
             isXR: false,
         },
         assessmentChecklist: [],
+        assessmentTranscript: '',
+        assessmentListening: false,
+        assessmentSpeechStatus: 'idle',
+        assessmentSpeechSupported: true,
+        assessmentSpeechError: null,
+        assessmentSpeechByStep: {},
+        assessmentPendingCompletion: null,
         trainingMode: null, // 'learning' | 'assessment'
         lastStepCompletion: null,
     }
@@ -108,20 +140,55 @@ export const useTrainingStore = create((set, get) => {
         }))
     }
 
+    const upsertAssessmentChecklistItem = (stepId, physicalComplete, speechConfirmed) => {
+        set((state) => {
+            const nextItem = {
+                stepId,
+                physicalComplete,
+                speechConfirmed,
+                timestamp: Date.now(),
+            }
+            const existingIndex = state.assessmentChecklist.findIndex((item) => item.stepId === stepId)
+
+            if (existingIndex < 0) {
+                return {
+                    assessmentChecklist: [...state.assessmentChecklist, nextItem],
+                }
+            }
+
+            const nextChecklist = [...state.assessmentChecklist]
+            nextChecklist[existingIndex] = {
+                ...nextChecklist[existingIndex],
+                ...nextItem,
+            }
+
+            return {
+                assessmentChecklist: nextChecklist,
+            }
+        })
+    }
+
     const moveToStep = (nextStepId, secondDoseChoice = get().secondDoseChoice) => {
         const nextStep = getStepById(nextStepId)
         if (!nextStep) {
             return
         }
 
+        const { trainingMode } = get()
+        const isAssessment = trainingMode === 'assessment'
         set({
             currentStepId: nextStepId,
             currentStepRuntime: createStepRuntime(nextStep),
             stepProgress: 0,
-            liveHint: nextStep.mistakeHints?.primary ?? null,
+            liveHint: isAssessment ? getAssessmentLiveHint('awaitingAction') : nextStep.mistakeHints?.primary ?? null,
             secondDoseChoice,
+            assessmentPendingCompletion: null,
+            sessionPhase: isAssessment ? 'awaitingAction' : get().sessionPhase,
         })
-        queueCoachMessage(buildCoachInstruction(nextStep), 'coaching')
+
+        if (!isAssessment) {
+            queueCoachMessage(buildCoachInstruction(nextStep), 'coaching')
+        }
     }
 
     const completeTraining = () => {
@@ -135,9 +202,13 @@ export const useTrainingStore = create((set, get) => {
             completedAt: Date.now(),
             isInhalerFocused: false,
             isClipboardFocused: false,
+            xrGrabOwners: {
+                inhaler: null,
+                clipboard: null,
+            },
             stepProgress: 1,
             liveHint: isAssessment 
-                ? 'Assessment complete. Review your results.'
+                ? getAssessmentLiveHint('completed')
                 : 'Training complete. Review the session or ask Ava a follow-up question.',
             pendingCoachMessage: isAssessment ? null : createQueuedCoachMessage({
                 kind: 'completion',
@@ -186,14 +257,46 @@ export const useTrainingStore = create((set, get) => {
         const state = get()
         const currentStep = getStepById(state.currentStepId)
         if (!currentStep) return
+        const isAssessment = state.trainingMode === 'assessment'
 
         const nextPatch = {
             currentStepRuntime: outcome.runtime,
             stepProgress: outcome.progress,
-            liveHint: outcome.liveHint ?? currentStep.mistakeHints?.primary ?? null,
+            liveHint: isAssessment
+                ? getAssessmentLiveHint(getInteractivePhaseFromOutcome(outcome.status))
+                : outcome.liveHint ?? currentStep.mistakeHints?.primary ?? null,
         }
 
         if (outcome.status === 'success') {
+            if (isAssessment) {
+                const speechConfirmed = state.assessmentSpeechByStep[currentStep.id]?.confirmed === true
+
+                if (speechConfirmed) {
+                    upsertAssessmentChecklistItem(currentStep.id, true, true)
+                    set({
+                        ...nextPatch,
+                        sessionPhase: getInteractivePhaseFromOutcome(outcome.status),
+                        assessmentPendingCompletion: null,
+                    })
+                    completeCurrentStep(outcome.branchChoice)
+                    return
+                }
+
+                set({
+                    currentStepRuntime: outcome.runtime,
+                    stepProgress: 1,
+                    sessionPhase: 'awaitingNarration',
+                    liveHint: getAssessmentLiveHint('awaitingNarration'),
+                    assessmentPendingCompletion: {
+                        stepId: currentStep.id,
+                        branchChoice: outcome.branchChoice,
+                        completedAt: Date.now(),
+                    },
+                    lastUserAction: sourceAction?.type ?? state.lastUserAction,
+                })
+                return
+            }
+
             set(nextPatch)
             completeCurrentStep(outcome.branchChoice)
             return
@@ -207,8 +310,17 @@ export const useTrainingStore = create((set, get) => {
                 correction: outcome.feedback.correction,
                 metrics: state.lastInputFrame,
             })
-            set(nextPatch)
-            queueCoachMessage(buildCoachFeedback(currentStep, outcome.feedback), 'feedback')
+            if (isAssessment) {
+                set({
+                    ...nextPatch,
+                    sessionPhase: 'awaitingAction',
+                    liveHint: getAssessmentLiveHint('feedback'),
+                    lastUserAction: sourceAction?.type ?? state.lastUserAction,
+                })
+            } else {
+                set(nextPatch)
+                queueCoachMessage(buildCoachFeedback(currentStep, outcome.feedback), 'feedback')
+            }
             return
         }
 
@@ -231,6 +343,7 @@ export const useTrainingStore = create((set, get) => {
                 sessionPhase: mode === 'assessment' ? 'awaitingAction' : 'starting',
                 startedAt: Date.now(),
                 focusDistanceOffset: state.focusDistanceOffset,
+                liveHint: mode === 'assessment' ? getAssessmentLiveHint('awaitingAction') : getInitialState().liveHint,
             })),
 
         markTrainingActive: () => {
@@ -288,6 +401,57 @@ export const useTrainingStore = create((set, get) => {
             const { sessionPhase } = get()
             if (value && !isSessionRunning(sessionPhase)) return
             set({ isClipboardFocused: value })
+        },
+
+        claimXRGrab: (objectId, owner) => {
+            const { sessionPhase, xrGrabOwners } = get()
+
+            if (!isSessionRunning(sessionPhase)) return false
+            if (!owner || (owner.type !== 'controller' && owner.type !== 'hand')) return false
+
+            const currentOwner = xrGrabOwners[objectId]
+            if (isSameXRGrabOwner(currentOwner, owner)) {
+                return true
+            }
+
+            const sourceBusy = Object.entries(xrGrabOwners).some(([entryObjectId, entryOwner]) => (
+                entryObjectId !== objectId && isSameXRGrabOwner(entryOwner, owner)
+            ))
+
+            if (sourceBusy) {
+                return false
+            }
+
+            set({
+                xrGrabOwners: {
+                    ...xrGrabOwners,
+                    [objectId]: owner,
+                },
+            })
+
+            return true
+        },
+
+        releaseXRGrab: (objectId, owner = null) => {
+            const { xrGrabOwners } = get()
+            const currentOwner = xrGrabOwners[objectId]
+
+            if (!currentOwner) {
+                return false
+            }
+
+            if (owner && !isSameXRGrabOwner(currentOwner, owner)) {
+                return false
+            }
+
+            set({
+                xrGrabOwners: {
+                    ...xrGrabOwners,
+                    [objectId]: null,
+                },
+            })
+
+            return true
         },
 
         setInputMode: (mode) => set({ inputMode: mode }),
@@ -405,23 +569,55 @@ export const useTrainingStore = create((set, get) => {
             })),
 
         finishAssessment: () => {
-            const { trainingMode, sessionPhase } = get()
+            const { trainingMode, sessionPhase, assessmentPendingCompletion, assessmentSpeechByStep } = get()
             if (trainingMode !== 'assessment' || sessionPhase === 'completed') return
+
+            if (assessmentPendingCompletion?.stepId) {
+                upsertAssessmentChecklistItem(
+                    assessmentPendingCompletion.stepId,
+                    true,
+                    assessmentSpeechByStep[assessmentPendingCompletion.stepId]?.confirmed === true,
+                )
+            }
+
             completeTraining()
         },
 
-        recordAssessmentStep: (stepId, physicalComplete, speechConfirmed) => {
-            set((state) => ({
-                assessmentChecklist: [
-                    ...state.assessmentChecklist,
-                    {
-                        stepId,
-                        physicalComplete,
-                        speechConfirmed,
-                        timestamp: Date.now(),
+        recordAssessmentStep: upsertAssessmentChecklistItem,
+
+        setAssessmentTranscript: (transcript) => set({ assessmentTranscript: transcript }),
+        setAssessmentListening: (value) => set({ assessmentListening: value }),
+        setAssessmentSpeechStatus: (value) => set({ assessmentSpeechStatus: value }),
+        setAssessmentSpeechSupported: (value) => set({ assessmentSpeechSupported: value }),
+        setAssessmentSpeechError: (value) => set({ assessmentSpeechError: value }),
+
+        markAssessmentSpeech: (stepId, transcript) => {
+            const state = get()
+            if (state.trainingMode !== 'assessment' || !stepId) return
+
+            if (state.assessmentSpeechByStep[stepId]?.confirmed) {
+                return
+            }
+
+            set({
+                assessmentSpeechByStep: {
+                    ...state.assessmentSpeechByStep,
+                    [stepId]: {
+                        confirmed: true,
+                        transcript,
+                        confirmedAt: Date.now(),
                     },
-                ],
-            }))
+                },
+            })
+
+            if (state.assessmentPendingCompletion?.stepId === stepId && state.currentStepId === stepId) {
+                upsertAssessmentChecklistItem(stepId, true, true)
+                set({
+                    assessmentPendingCompletion: null,
+                    liveHint: getAssessmentLiveHint('awaitingAction'),
+                })
+                completeCurrentStep(state.assessmentPendingCompletion.branchChoice ?? null)
+            }
         },
 
         getVisibleSteps: () => getVisibleTrainingSteps(get().secondDoseChoice),

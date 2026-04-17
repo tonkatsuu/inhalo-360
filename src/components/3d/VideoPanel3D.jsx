@@ -1,5 +1,7 @@
-import { Html, RoundedBox, Text } from '@react-three/drei'
+import { Billboard, RoundedBox, Text, useVideoTexture } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { useXR } from '@react-three/xr'
+
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
@@ -8,9 +10,9 @@ import { useTrainingStore } from '../../store/useTrainingStore'
 
 const PANEL_WIDTH = 0.72
 const PANEL_HEIGHT = 0.52
-const IFRAME_WIDTH = 320
-const IFRAME_HEIGHT = 180
 const FLOAT_AMPLITUDE = 0.008
+
+
 
 const STEP_VIDEO_FILES = {
     shake_initial: '/shake_initial.mp4',
@@ -27,22 +29,35 @@ const STEP_VIDEO_FILES = {
     second_dose_decision: '/second_dose_decision.mp4',
 }
 
-const videoContainerStyle = {
-    width: `${IFRAME_WIDTH}px`,
-    height: `${IFRAME_HEIGHT}px`,
-    borderRadius: '8px',
-    overflow: 'hidden',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
-    background: '#000',
-    pointerEvents: 'auto',
-}
-
 const videoStyle = {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
     borderRadius: '8px',
 }
+
+function VideoContent({ src, opacity }) {
+    const texture = useVideoTexture(src, {
+        unsuspended: 'canplay',
+        muted: true,
+        loop: true,
+        playsInline: true,
+    })
+
+    return (
+        <mesh position={[0, -0.015, 0.025]}>
+            <planeGeometry args={[0.64, 0.64 * (9 / 16)]} />
+            <meshBasicMaterial 
+                map={texture} 
+                toneMapped={false} 
+                transparent 
+                opacity={opacity}
+                side={THREE.DoubleSide}
+            />
+        </mesh>
+    )
+}
+
 
 export function VideoPanel3D({ ...props }) {
     const { state } = useConvaiRuntime()
@@ -51,6 +66,8 @@ export function VideoPanel3D({ ...props }) {
     const secondDoseChoice = useTrainingStore((s) => s.secondDoseChoice)
     const isClipboardFocused = useTrainingStore((s) => s.isClipboardFocused)
     const camera = useThree((s) => s.camera)
+    const xrMode = useXR((s) => s.mode)
+
     const root = useRef()
     const glassMaterial = useRef()
     const borderMaterial = useRef()
@@ -75,6 +92,8 @@ export function VideoPanel3D({ ...props }) {
 
     const lookTarget = useRef(new THREE.Vector3())
 
+
+
     useFrame((_frameState, delta) => {
         if (!isRendered || !root.current) {
             return
@@ -82,16 +101,17 @@ export function VideoPanel3D({ ...props }) {
 
         fadeRef.current = THREE.MathUtils.damp(fadeRef.current, isVisible ? 1 : 0, 8, delta)
         const opacity = fadeRef.current
-
         const scale = 0.9 + opacity * 0.1
         root.current.scale.setScalar(scale)
 
         floatTimeRef.current += delta
         root.current.position.y = Math.sin(floatTimeRef.current * 1.4) * FLOAT_AMPLITUDE
 
+
         // Face the camera
         lookTarget.current.copy(camera.position)
         root.current.lookAt(lookTarget.current)
+
 
         if (glassMaterial.current) {
             glassMaterial.current.opacity = 0.68 * opacity
@@ -123,7 +143,7 @@ export function VideoPanel3D({ ...props }) {
     }
 
     return (
-        <group {...props}>
+        <Billboard {...props} follow lockX={false} lockY={false} lockZ={false}>
             <group ref={root}>
                 {/* Shadow layer */}
                 <RoundedBox
@@ -205,28 +225,15 @@ export function VideoPanel3D({ ...props }) {
                     </Text>
                 </group>
 
-                {/* Local Video via Html */}
-                <Html
-                    transform
-                    occlude={false}
-                    position={[0, -0.015, 0.025]}
-                    distanceFactor={1.58}
-                    zIndexRange={[0, 0]}
-                    style={{ pointerEvents: 'auto' }}
-                >
-                    <div style={videoContainerStyle}>
-                        <video
-                            key={currentVideoFile}
-                            src={currentVideoFile}
-                            style={videoStyle}
-                            autoPlay
-                            muted
-                            loop
-                            playsInline
-                        />
-                    </div>
-                </Html>
+                {/* Local Video via VideoTexture */}
+                {currentVideoFile && (
+                    <VideoContent
+                        key={currentVideoFile}
+                        src={currentVideoFile}
+                        opacity={fadeRef.current}
+                    />
+                )}
             </group>
-        </group>
+        </Billboard>
     )
 }

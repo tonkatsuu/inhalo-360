@@ -158,7 +158,7 @@ export function TrainingBranchPanel3D(props) {
                     anchorY="middle"
                     color="#c8d6e3"
                 >
-                    Choose based on the prescription you want to rehearse.
+                    This appears after you finish breathing out. Then choose based on the prescription you want to rehearse.
                 </Text>
 
                 <group position={[-0.22, -0.17, 0.04]}>

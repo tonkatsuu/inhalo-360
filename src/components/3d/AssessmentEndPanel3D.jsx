@@ -5,21 +5,16 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
+import { faceCameraUpright } from './faceCameraUpright'
 import { useHoverSelectAction } from './useHoverSelectAction'
 import { useXRHardwareState } from './useXRHardwareState'
 
 const WIDTH = 0.38
 const HEIGHT = 0.1
 const DEPTH = 0.025
-const BRANCH_OFFSET_X = -0.78
-const BRANCH_OFFSET_Y = -0.02
-const BRANCH_OFFSET_Z = 0.02
-const HUD_DISTANCE = 1.25
-const HUD_FOLLOW_SPEED = 5
-const HUD_VERTICAL_OFFSET = -0.04
 
 export function AssessmentEndPanel3D(props) {
-    const { trainingMode, sessionPhase, currentStepId, finishAssessment } = useTrainingStore()
+    const { trainingMode, sessionPhase, finishAssessment } = useTrainingStore()
     const [hovered, setHovered] = useState(false)
     const hoverRef = useRef(false)
     const root = useRef()
@@ -27,18 +22,13 @@ export function AssessmentEndPanel3D(props) {
     const camera = useThree((state) => state.camera)
     const raycaster = useRef(new THREE.Raycaster())
     const direction = useRef(new THREE.Vector3())
-    const lookTarget = useRef(new THREE.Vector3())
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
     const controllerDir = useMemo(() => new THREE.Vector3(), [])
-    const forward = useMemo(() => new THREE.Vector3(), [])
-    const hudTarget = useMemo(() => new THREE.Vector3(), [])
-    const tempUp = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
     const { activePointerSource } = useXRHardwareState()
 
     const isVisible = trainingMode === 'assessment' && isSessionRunning(sessionPhase)
-    const shouldAvoidBranchPanel = sessionPhase === 'branching' && currentStepId === 'second_dose_decision'
 
     useFrame((_state, delta) => {
         if (!root.current) return
@@ -50,48 +40,7 @@ export function AssessmentEndPanel3D(props) {
             return
         }
 
-        if (xrMode === 'immersive-vr') {
-            camera.getWorldPosition(lookTarget.current)
-            camera.getWorldDirection(forward)
-            tempUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize()
-
-            hudTarget
-                .copy(lookTarget.current)
-                .add(forward.clone().multiplyScalar(HUD_DISTANCE))
-                .add(tempUp.multiplyScalar(HUD_VERTICAL_OFFSET))
-
-            if (root.current.parent) {
-                root.current.parent.worldToLocal(hudTarget)
-                root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
-            } else {
-                root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
-            }
-        } else {
-            root.current.position.x = THREE.MathUtils.damp(
-                root.current.position.x,
-                shouldAvoidBranchPanel ? BRANCH_OFFSET_X : 0,
-                8,
-                delta,
-            )
-            root.current.position.y = THREE.MathUtils.damp(
-                root.current.position.y,
-                shouldAvoidBranchPanel ? BRANCH_OFFSET_Y : 0,
-                8,
-                delta,
-            )
-            root.current.position.z = THREE.MathUtils.damp(
-                root.current.position.z,
-                shouldAvoidBranchPanel ? BRANCH_OFFSET_Z : 0,
-                8,
-                delta,
-            )
-        }
-
-        camera.getWorldPosition(lookTarget.current)
-        if (root.current.parent) {
-            root.current.parent.worldToLocal(lookTarget.current)
-        }
-        root.current.lookAt(lookTarget.current)
+        faceCameraUpright(root.current, camera, { slerpAlpha: Math.min(1, delta * 6) })
 
         if (xrMode === 'immersive-vr' && activePointerSource?.object) {
             activePointerSource.object.updateWorldMatrix(true, false)

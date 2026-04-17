@@ -108,7 +108,7 @@ export const TRAINING_STEPS = [
     {
         id: 'second_dose_decision',
         shortLabel: 'Need second dose?',
-        instruction: 'Breathe out and decide whether a second dose is needed.',
+        instruction: 'Breathe out first. After that, choose yes or no for a second dose.',
         validatorType: 'branchChoice',
         requiredHoldMs: 900,
         successWindow: { requireAwayFromMouth: true },
@@ -639,7 +639,7 @@ function evaluateBranchChoice(step, runtime, frame, action) {
         if (!action || action.type !== 'branch-choice') {
             return buildOutcome(nextRuntime, {
                 status: 'branching',
-                liveHint: 'Choose whether a second dose is needed.',
+                liveHint: 'Breathing out is complete. Now choose yes or no for a second dose.',
             })
         }
 
@@ -662,7 +662,7 @@ function evaluateBranchChoice(step, runtime, frame, action) {
         if (!action || action.type !== 'branch-choice') {
             return buildOutcome(nextRuntime, {
                 status: 'branching',
-                liveHint: 'Choose whether a second dose is needed.',
+                liveHint: 'Breathing out is complete. Now choose yes or no for a second dose.',
             })
         }
 

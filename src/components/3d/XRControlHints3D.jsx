@@ -6,17 +6,20 @@ import * as THREE from 'three'
 import { getStepById, useTrainingStore } from '../../store/useTrainingStore'
 import { isSessionRunning } from '../../training/engine'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
+import { faceCameraUpright } from './faceCameraUpright'
 import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 0.72
-const PANEL_HEIGHT = 0.42
+const PANEL_HEIGHT = 0.5
 const FLOAT_AMPLITUDE = 0.006
-const HUD_DISTANCE = 1.35
-const HUD_LATERAL_OFFSET = 0.42
-const HUD_VERTICAL_OFFSET = -0.02
-const HUD_FOLLOW_SPEED = 5
+const LIVE_HINT_Y = -0.05
+const SHAKE_PROGRESS_Y = -0.11
+const PROGRESS_BAR_Y = -0.155
+const STEP_LABEL_Y = -0.195
+const LOCOMOTION_HINT_Y = -0.215
+const DEFAULT_HINT_POSITION = [-1.55, 1.88, -0.15]
 
-function getXRHintForStep(step, handsOnly) {
+function getXRHintForStep(step, handsOnly, sessionPhase, stepProgress) {
     if (!step) {
         return { action: '', detail: '' }
     }
@@ -74,6 +77,13 @@ function getXRHintForStep(step, handsOnly) {
                 detail: 'Press and hold the B button to hold your breath steadily.',
             }
         case 'branchChoice':
+            if (sessionPhase !== 'branching' && (stepProgress ?? 0) < 1) {
+                return {
+                    action: 'Thumbstick Down or A = Exhale',
+                    detail: 'Breathe out first. The Yes/No panel will appear after you finish exhaling.',
+                }
+            }
+
             return {
                 action: 'Point and select Yes or No',
                 detail: 'Aim your controller at the panel and pull the trigger to choose.',
@@ -86,18 +96,15 @@ function getXRHintForStep(step, handsOnly) {
     }
 }
 
-export function XRControlHints3D() {
+export function XRControlHints3D({ position = DEFAULT_HINT_POSITION }) {
     const root = useRef()
     const glassMat = useRef()
     const borderMat = useRef()
     const floatTime = useRef(0)
 
     const camera = useThree((state) => state.camera)
-    const lookTarget = useMemo(() => new THREE.Vector3(), [])
-    const hudTarget = useMemo(() => new THREE.Vector3(), [])
-    const tempForward = useMemo(() => new THREE.Vector3(), [])
-    const tempRight = useMemo(() => new THREE.Vector3(), [])
-    const tempUp = useMemo(() => new THREE.Vector3(), [])
+    const anchorPosition = useMemo(() => new THREE.Vector3().fromArray(position), [position])
+    const panelPosition = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
     const { handsOnly } = useXRHardwareState()
@@ -116,10 +123,10 @@ export function XRControlHints3D() {
     const isRunning = isSessionRunning(sessionPhase)
     const isVisible = trainingMode !== 'assessment' && xrMode === 'immersive-vr' && isRunning && currentStep
 
-    const hint = getXRHintForStep(currentStep, handsOnly)
-    const isShakeStep = currentStep?.validatorType === 'shake'
     const progressValue = Math.max(0, Math.min(1, stepProgress ?? 0))
     const progressPercent = Math.round(progressValue * 100)
+    const hint = getXRHintForStep(currentStep, handsOnly, sessionPhase, progressValue)
+    const isShakeStep = currentStep?.validatorType === 'shake'
 
     useFrame((_state, delta) => {
         if (!root.current || !isVisible) {
@@ -127,19 +134,12 @@ export function XRControlHints3D() {
         }
 
         floatTime.current += delta
-        camera.getWorldPosition(lookTarget)
-        camera.getWorldDirection(tempForward)
-        tempUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize()
-        tempRight.crossVectors(tempForward, tempUp).normalize()
+        panelPosition
+            .copy(anchorPosition)
+            .setY(anchorPosition.y + Math.sin(floatTime.current * 1.4) * FLOAT_AMPLITUDE)
 
-        hudTarget
-            .copy(lookTarget)
-            .add(tempForward.multiplyScalar(HUD_DISTANCE))
-            .add(tempRight.multiplyScalar(-HUD_LATERAL_OFFSET))
-            .add(tempUp.multiplyScalar(HUD_VERTICAL_OFFSET + Math.sin(floatTime.current * 1.4) * FLOAT_AMPLITUDE))
-
-        root.current.position.lerp(hudTarget, Math.min(1, delta * HUD_FOLLOW_SPEED))
-        root.current.lookAt(lookTarget)
+        root.current.position.copy(panelPosition)
+        faceCameraUpright(root.current, camera)
 
         if (glassMat.current) {
             glassMat.current.opacity = 0.88
@@ -222,7 +222,7 @@ export function XRControlHints3D() {
                 {/* Live hint from engine */}
                 {liveHint && (
                     <Text
-                        position={[0, -0.06, 0.02]}
+                        position={[0, LIVE_HINT_Y, 0.02]}
                         fontSize={0.022}
                         maxWidth={0.62}
                         lineHeight={1.2}
@@ -237,20 +237,20 @@ export function XRControlHints3D() {
                 )}
 
                 {/* Progress bar background */}
-                <mesh position={[0, -0.135, 0.02]}>
+                <mesh position={[0, PROGRESS_BAR_Y, 0.02]}>
                     <planeGeometry args={[0.56, 0.028]} />
                     <meshBasicMaterial color="#1a2e3b" transparent opacity={0.7} />
                 </mesh>
 
                 {/* Progress bar fill */}
-                <mesh position={[-0.28 + (0.56 * progressValue) / 2, -0.135, 0.025]}>
+                <mesh position={[-0.28 + (0.56 * progressValue) / 2, PROGRESS_BAR_Y, 0.025]}>
                     <planeGeometry args={[0.56 * Math.max(0.001, progressValue), 0.028]} />
                     <meshBasicMaterial color={isShakeStep ? '#f59e0b' : '#22c55e'} transparent opacity={0.85} />
                 </mesh>
 
                 {isShakeStep && (
                     <Text
-                        position={[0, -0.095, 0.02]}
+                        position={[0, SHAKE_PROGRESS_Y, 0.02]}
                         fontSize={0.02}
                         maxWidth={0.62}
                         textAlign="center"
@@ -264,7 +264,7 @@ export function XRControlHints3D() {
 
                 {/* Step label */}
                 <Text
-                    position={[0, isShakeStep ? -0.185 : -0.175, 0.02]}
+                    position={[0, STEP_LABEL_Y, 0.02]}
                     fontSize={0.019}
                     maxWidth={0.62}
                     textAlign="center"
@@ -303,8 +303,9 @@ export function XRControlHints3D() {
 
                 {/* Locomotion Hint */}
                 <Text
-                    position={[0, -PANEL_HEIGHT / 2 + 0.03, 0.02]}
+                    position={[0, LOCOMOTION_HINT_Y, 0.02]}
                     fontSize={0.018}
+                    maxWidth={0.66}
                     color="#4b7c91"
                     textAlign="center"
                     anchorX="center"

@@ -13,14 +13,15 @@ import { TrainingReviewPanel3D } from './components/3d/TrainingReviewPanel3D'
 import { TrainingBranchPanel3D } from './components/3d/TrainingBranchPanel3D'
 import { TrainingGuides3D } from './components/3d/TrainingGuides3D'
 import { XRControlHints3D } from './components/3d/XRControlHints3D'
-import { VideoPanel3D } from './components/3d/VideoPanel3D'
 import { ConvaiXRMicControls } from './components/3d/ConvaiXRMicControls'
+import { AssessmentSpeechPanel3D } from './components/3d/AssessmentSpeechPanel3D'
 import { ConvaiProvider } from './convai/ConvaiContext'
 import { ConvaiTrainingOrchestrator } from './components/ConvaiTrainingOrchestrator'
 import { TrainingHUD } from './components/TrainingHUD'
 import { ConvaiRuntime } from './components/ConvaiRuntime'
 import { TrainingStepFeedback } from './components/TrainingStepFeedback'
 import { AssessmentOrchestrator } from './components/AssessmentOrchestrator'
+import { AssessmentAccessibilityPanel } from './components/AssessmentAccessibilityPanel'
 import { AssessmentEndPanel3D } from './components/3d/AssessmentEndPanel3D'
 import { BrandBadge } from './components/BrandBadge'
 import { readConvaiConfig } from './convai/config'
@@ -130,6 +131,7 @@ export default function App() {
                 </div>
 
                 <TrainingHUD />
+                <AssessmentAccessibilityPanel />
 
                 <Canvas camera={{ position: [-2.35, 1.6, 1.15], rotation: [-0.06, 0, 0], fov: 75 }}>
                     <XR store={store}>
@@ -166,9 +168,10 @@ export default function App() {
                         <TrainingBranchPanel3D position={[-2.35, 1.62, -0.55]} rotation={[0, 0, 0]} />
                         <TrainingReviewPanel3D position={[-2.35, 1.78, -0.72]} />
                         <TrainingGuides3D />
-                        <VideoPanel3D position={[-3.6, 1.72, -1.8]} />
-                        <XRControlHints3D position={[-1.55, 1.88, -0.15]} />
-                        <AssessmentEndPanel3D position={[-2.35, 1.4, -0.15]} />
+                        <XRControlHints3D position={[-1.55, 2.48, -0.15]} />
+
+                        <AssessmentSpeechPanel3D position={[-1.55, 1.62, -1.05]} />
+                        <AssessmentEndPanel3D position={[-1.55, 1.16, -1.05]} />
                         <ActiveVRLocomotion originRef={xrOriginRef} />
                         <FpsControls canLockPointer collisionLayout={collisionLayout} />
                         <ConvaiXRMicControls />

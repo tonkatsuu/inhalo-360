@@ -1,8 +1,10 @@
-import { useRef } from 'react'
+import React, { useRef, Suspense } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { useConvaiRuntime } from '../../convai/useConvaiRuntime'
 import { ConvaiSpeechBillboard } from './ConvaiSpeechBillboard'
+import { VideoPanel3D } from './VideoPanel3D'
+
 
 const AVATAR_MODEL_URL =
     'https://cdn.jsdelivr.net/gh/c-frame/valid-avatars-glb@c539a28/avatars/MENA/MENA_F_1_Medi.glb'
@@ -167,6 +169,10 @@ export function ConvaiAvatar(props) {
     return (
         <group {...props} dispose={null}>
             <ConvaiSpeechBillboard position={[1.15, 1.35, 0.15]} />
+            <React.Suspense fallback={null}>
+                <VideoPanel3D position={[-1.15, 1.55, 0.15]} />
+            </React.Suspense>
+
             <primitive object={nodes.Hips} />
             {Object.values(nodes).map((node, index) =>
                 node.isMesh ? (
