@@ -34,6 +34,7 @@ function stopEvent(event) {
 export function AssessmentAccessibilityPanel() {
     const {
         assessmentListening,
+        assessmentRequireSpeech,
         assessmentSpeechSupported,
         assessmentTranscript,
         currentStepId,
@@ -42,7 +43,11 @@ export function AssessmentAccessibilityPanel() {
         trainingMode,
     } = useTrainingStore()
 
-    const isAssessmentVisible = trainingMode === 'assessment' && hasTrainingStarted && sessionPhase !== 'idle'
+    const isAssessmentVisible =
+        trainingMode === 'assessment' &&
+        assessmentRequireSpeech &&
+        hasTrainingStarted &&
+        sessionPhase !== 'idle'
     if (!isAssessmentVisible) {
         return null
     }

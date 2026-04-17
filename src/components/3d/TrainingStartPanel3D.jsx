@@ -11,34 +11,22 @@ import { useHoverSelectAction } from './useHoverSelectAction'
 import { useXRHardwareState } from './useXRHardwareState'
 
 const PANEL_WIDTH = 1.2
-const PANEL_HEIGHT = 0.8
+const PANEL_HEIGHT = 0.84
 const PANEL_DEPTH = 0.04
 const BUTTON_WIDTH = 0.52
 const BUTTON_HEIGHT = 0.16
+const TOGGLE_WIDTH = 0.34
+const TOGGLE_HEIGHT = 0.09
 const FLOAT_AMPLITUDE = 0.015
 const HUD_DISTANCE = 1.35
 const HUD_FOLLOW_SPEED = 4.5
 const HUD_VERTICAL_OFFSET = -0.05
 
-function getButtonLabel(isStarting, hasStartError) {
-    if (isStarting && !hasStartError) {
-        return 'Connecting...'
-    }
-
-    if (hasStartError) {
-        return 'Retry Start'
-    }
-
-    return 'Start Training'
-}
-
 export function TrainingStartPanel3D(props) {
     const root = useRef()
-    const buttonRef = useRef()
     const glassMaterial = useRef()
     const borderMaterial = useRef()
     const chipMaterial = useRef()
-    const buttonMaterial = useRef()
     const shadowMaterial = useRef()
     const hoverRef = useRef(false)
     const fadeRef = useRef(0)
@@ -54,13 +42,12 @@ export function TrainingStartPanel3D(props) {
     const controllerRayPos = useMemo(() => new THREE.Vector3(), [])
     const hudTarget = useMemo(() => new THREE.Vector3(), [])
     const tempUp = useMemo(() => new THREE.Vector3(), [])
-    const localOrigin = useMemo(() => new THREE.Vector3(), [])
 
     const xrMode = useXR((state) => state.mode)
     const { activePointerSource } = useXRHardwareState()
 
     const { enabled, isConfigured } = useConvaiRuntime()
-    const { sessionPhase, sessionError, startTraining } = useTrainingStore()
+    const { assessmentRequireSpeech, sessionPhase, sessionError, setAssessmentRequireSpeech, startTraining } = useTrainingStore()
 
     const isVisible = sessionPhase === 'idle' || sessionPhase === 'starting'
     const isRendered = isMounted || isVisible
@@ -86,10 +73,16 @@ export function TrainingStartPanel3D(props) {
         startTraining('assessment')
     }, [canStart, startTraining, sessionPhase])
 
+    const toggleAssessmentSpeech = useCallback(() => {
+        if (sessionPhase === 'starting') return
+        setAssessmentRequireSpeech(!assessmentRequireSpeech)
+    }, [assessmentRequireSpeech, sessionPhase, setAssessmentRequireSpeech])
+
     const hoverHandlers = useMemo(() => ({
         learning: tryStartLearning,
         assessment: tryStartAssessment,
-    }), [tryStartAssessment, tryStartLearning])
+        voice: toggleAssessmentSpeech,
+    }), [toggleAssessmentSpeech, tryStartAssessment, tryStartLearning])
 
     useHoverSelectAction(isRendered, hoverRef, hoverHandlers)
 
@@ -130,8 +123,9 @@ export function TrainingStartPanel3D(props) {
 
         const learningButton = root.current.getObjectByName('learning-button')
         const assessmentButton = root.current.getObjectByName('assessment-button')
+        const voiceButton = root.current.getObjectByName('voice-button')
 
-        if (learningButton && assessmentButton) {
+        if (learningButton && assessmentButton && voiceButton) {
             // In XR mode, raycast from the controller; on desktop, use camera gaze
             if (xrMode === 'immersive-vr' && activePointerSource?.object) {
                 activePointerSource.object.updateWorldMatrix(true, false)
@@ -148,6 +142,8 @@ export function TrainingStartPanel3D(props) {
                 nextHover = 'learning'
             } else if (raycaster.intersectObject(assessmentButton, true).length > 0) {
                 nextHover = 'assessment'
+            } else if (raycaster.intersectObject(voiceButton, true).length > 0) {
+                nextHover = 'voice'
             }
 
             hoverRef.current = nextHover
@@ -173,10 +169,6 @@ export function TrainingStartPanel3D(props) {
 
         if (shadowMaterial.current) {
             shadowMaterial.current.opacity = 0.22 * opacity
-        }
-
-        if (buttonMaterial.current) {
-            // Note: buttonMaterial will be handled individually in-line now
         }
 
         if (!isVisible && opacity < 0.025) {
@@ -243,7 +235,7 @@ export function TrainingStartPanel3D(props) {
                 </Text>
 
                 <Text
-                    position={[0, -0.30, 0.05]}
+                    position={[0, -0.25, 0.05]}
                     fontSize={0.04}
                     maxWidth={0.8}
                     lineHeight={1.15}
@@ -255,12 +247,35 @@ export function TrainingStartPanel3D(props) {
                     {helperText}
                 </Text>
 
-                <group position={[-0.3, -0.49, 0.04]}>
+                <group position={[0.3, -0.58, 0.04]}>
+                    <RoundedBox name="voice-button" args={[TOGGLE_WIDTH, TOGGLE_HEIGHT, 0.04]} radius={0.03} smoothness={5} onClick={toggleAssessmentSpeech}>
+                        <meshStandardMaterial
+                            color={assessmentRequireSpeech ? (hoveredButton === 'voice' ? '#7c3aed' : '#6d28d9') : (hoveredButton === 'voice' ? '#436675' : '#34515d')}
+                            transparent
+                            opacity={0.94}
+                            emissive={hoveredButton === 'voice' ? '#10232b' : '#000000'}
+                            emissiveIntensity={hoveredButton === 'voice' ? 0.4 : 0}
+                        />
+                    </RoundedBox>
+                    <Text
+                        position={[0, 0.012, 0.04]}
+                        fontSize={0.026}
+                        maxWidth={TOGGLE_WIDTH * 0.9}
+                        anchorX="center"
+                        anchorY="middle"
+                        textAlign="center"
+                        color="#f8fafc"
+                    >
+                        {assessmentRequireSpeech ? 'Voice Check: On' : 'Voice Check: Off'}
+                    </Text>
+                </group>
+
+                <group position={[-0.3, -0.58, 0.04]}>
                     <RoundedBox name="learning-button" args={[BUTTON_WIDTH, BUTTON_HEIGHT, 0.05]} radius={0.04} smoothness={5} onClick={tryStartLearning}>
                         <meshStandardMaterial 
                             color={canStart ? (hoveredButton === 'learning' ? '#34d399' : '#22c55e') : '#5f6b7a'} 
                             transparent 
-                            opacity={0.96 * fadeRef.current} 
+                            opacity={0.96} 
                             emissive={hoveredButton === 'learning' ? '#123524' : '#000000'}
                             emissiveIntensity={hoveredButton === 'learning' ? 0.55 : 0}
                         />
@@ -278,12 +293,12 @@ export function TrainingStartPanel3D(props) {
                     </Text>
                 </group>
 
-                <group position={[0.3, -0.49, 0.04]}>
+                <group position={[0.3, -0.48, 0.04]}>
                     <RoundedBox name="assessment-button" args={[BUTTON_WIDTH, BUTTON_HEIGHT, 0.05]} radius={0.04} smoothness={5} onClick={tryStartAssessment}>
                         <meshStandardMaterial 
                             color={canStart ? (hoveredButton === 'assessment' ? '#5c97af' : '#46788c') : '#5f6b7a'} 
                             transparent 
-                            opacity={0.96 * fadeRef.current} 
+                            opacity={0.96} 
                             emissive={hoveredButton === 'assessment' ? '#0f2a35' : '#000000'}
                             emissiveIntensity={hoveredButton === 'assessment' ? 0.55 : 0}
                         />

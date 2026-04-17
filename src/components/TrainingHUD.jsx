@@ -71,6 +71,8 @@ export function TrainingHUD() {
     const {
         assessmentChecklist,
         assessmentListening,
+        assessmentRequireSpeech,
+        assessmentSpeechLevel,
         assessmentSpeechStatus,
         assessmentSpeechError,
         assessmentSpeechSupported,
@@ -154,7 +156,9 @@ export function TrainingHUD() {
                                     width: 6,
                                     height: 6,
                                     borderRadius: '50%',
-                                    background: !assessmentSpeechSupported
+                                    background: !assessmentRequireSpeech
+                                        ? '#4b7a8c'
+                                        : !assessmentSpeechSupported
                                         ? '#b91c1c'
                                         : assessmentSpeechError
                                             ? '#f59e0b'
@@ -163,7 +167,9 @@ export function TrainingHUD() {
                                                 : '#4b7a8c',
                                 }}
                             />
-                            {!assessmentSpeechSupported
+                            {!assessmentRequireSpeech
+                                ? 'ACTION ONLY'
+                                : !assessmentSpeechSupported
                                 ? 'UNSUPPORTED'
                                 : assessmentSpeechStatus === 'starting'
                                     ? 'STARTING'
@@ -210,6 +216,14 @@ export function TrainingHUD() {
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>
                         Assessment Progress: {completedAssessmentCount}/{visibleSteps.length} completed
                     </div>
+                    <div style={{ marginBottom: 6 }}>
+                        Mode: {assessmentRequireSpeech ? 'Action + voice required' : 'Action only'}
+                    </div>
+                    {assessmentRequireSpeech && (
+                        <div style={{ marginBottom: 6 }}>
+                            Mic signal: {Math.round(Math.max(0, Math.min(1, assessmentSpeechLevel)) * 100)}%
+                        </div>
+                    )}
                     <div>{liveHint}</div>
                 </div>
             )}

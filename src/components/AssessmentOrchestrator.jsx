@@ -5,11 +5,13 @@ import { matchStepSpeech } from '../training/assessment'
 
 export function AssessmentOrchestrator() {
     const {
+        assessmentRequireSpeech,
         trainingMode,
         currentStepId,
         sessionPhase,
         markAssessmentSpeech,
         setAssessmentListening,
+        setAssessmentSpeechLevel,
         setAssessmentSpeechStatus,
         setAssessmentSpeechError,
         setAssessmentSpeechSupported,
@@ -23,6 +25,7 @@ export function AssessmentOrchestrator() {
         status,
         transcript, 
         error,
+        inputLevel,
         startListening, 
         stopListening, 
         restartListening,
@@ -35,29 +38,33 @@ export function AssessmentOrchestrator() {
     }, [isSupported, setAssessmentSpeechSupported])
 
     useEffect(() => {
-        setAssessmentSpeechStatus(trainingMode === 'assessment' ? status : 'idle')
-    }, [setAssessmentSpeechStatus, status, trainingMode])
+        setAssessmentSpeechStatus(trainingMode === 'assessment' && assessmentRequireSpeech ? status : 'idle')
+    }, [assessmentRequireSpeech, setAssessmentSpeechStatus, status, trainingMode])
 
     useEffect(() => {
-        setAssessmentSpeechError(error)
-    }, [error, setAssessmentSpeechError])
+        setAssessmentSpeechError(trainingMode === 'assessment' && assessmentRequireSpeech ? error : null)
+    }, [assessmentRequireSpeech, error, setAssessmentSpeechError, trainingMode])
 
     useEffect(() => {
-        setAssessmentListening(trainingMode === 'assessment' && isListening)
-    }, [isListening, setAssessmentListening, trainingMode])
+        setAssessmentSpeechLevel(trainingMode === 'assessment' && assessmentRequireSpeech ? inputLevel : 0)
+    }, [assessmentRequireSpeech, inputLevel, setAssessmentSpeechLevel, trainingMode])
 
     useEffect(() => {
-        if (trainingMode !== 'assessment') {
+        setAssessmentListening(trainingMode === 'assessment' && assessmentRequireSpeech && isListening)
+    }, [assessmentRequireSpeech, isListening, setAssessmentListening, trainingMode])
+
+    useEffect(() => {
+        if (trainingMode !== 'assessment' || !assessmentRequireSpeech) {
             setAssessmentTranscript('')
             return
         }
 
         setAssessmentTranscript(transcript)
-    }, [transcript, trainingMode, setAssessmentTranscript])
+    }, [assessmentRequireSpeech, transcript, trainingMode, setAssessmentTranscript])
 
     // Manage listening state
     useEffect(() => {
-        if (trainingMode === 'assessment' && sessionPhase !== 'completed' && sessionPhase !== 'idle') {
+        if (trainingMode === 'assessment' && assessmentRequireSpeech && sessionPhase !== 'completed' && sessionPhase !== 'idle') {
             if (!isListening && isSupported) {
                 startListening()
             }
@@ -66,10 +73,15 @@ export function AssessmentOrchestrator() {
                 stopListening()
             }
         }
-    }, [trainingMode, sessionPhase, isListening, startListening, stopListening, isSupported])
+    }, [assessmentRequireSpeech, trainingMode, sessionPhase, isListening, startListening, stopListening, isSupported])
 
     useEffect(() => {
         if (trainingMode !== 'assessment' || sessionPhase === 'completed' || sessionPhase === 'idle') {
+            clearSessionError()
+            return
+        }
+
+        if (!assessmentRequireSpeech) {
             clearSessionError()
             return
         }
@@ -100,10 +112,10 @@ export function AssessmentOrchestrator() {
         }
 
         clearSessionError()
-    }, [trainingMode, sessionPhase, isSupported, error, setSessionError, clearSessionError])
+    }, [assessmentRequireSpeech, trainingMode, sessionPhase, isSupported, error, setSessionError, clearSessionError])
 
     useEffect(() => {
-        if (trainingMode !== 'assessment' || !currentStepId || sessionPhase === 'completed' || sessionPhase === 'idle' || !isSupported) {
+        if (trainingMode !== 'assessment' || !assessmentRequireSpeech || !currentStepId || sessionPhase === 'completed' || sessionPhase === 'idle' || !isSupported) {
             previousStepIdRef.current = currentStepId
             return
         }
@@ -113,16 +125,16 @@ export function AssessmentOrchestrator() {
         }
 
         previousStepIdRef.current = currentStepId
-    }, [currentStepId, isSupported, restartListening, sessionPhase, trainingMode])
+    }, [assessmentRequireSpeech, currentStepId, isSupported, restartListening, sessionPhase, trainingMode])
 
     // Detect speech confirmation for the current step and let the store decide whether it can advance.
     useEffect(() => {
-        if (trainingMode !== 'assessment' || !currentStepId || sessionPhase === 'completed') return
+        if (trainingMode !== 'assessment' || !assessmentRequireSpeech || !currentStepId || sessionPhase === 'completed') return
 
         if (matchStepSpeech(transcript, currentStepId)) {
             markAssessmentSpeech(currentStepId, transcript)
         }
-    }, [transcript, currentStepId, trainingMode, sessionPhase, markAssessmentSpeech])
+    }, [assessmentRequireSpeech, transcript, currentStepId, trainingMode, sessionPhase, markAssessmentSpeech])
 
     return null
 }

@@ -70,6 +70,7 @@ export function TrainingReviewPanel3D(props) {
         stepResults, 
         trainingMode, 
         assessmentChecklist,
+        assessmentRequireSpeech,
         startTraining,
         getVisibleSteps 
     } = useTrainingStore()
@@ -86,7 +87,15 @@ export function TrainingReviewPanel3D(props) {
 
     const reviewItems = isAssessment 
         ? [
-            { id: 'score', title: `Final Score: ${assessmentResults?.score}%`, detail: assessmentResults?.isPass ? 'Excellent work! You have mastered the technique.' : 'Keep practicing to improve your accuracy and narration.' },
+            {
+                id: 'score',
+                title: `Final Score: ${assessmentResults?.score}%`,
+                detail: assessmentResults?.isPass
+                    ? 'Excellent work! You have mastered the technique.'
+                    : assessmentRequireSpeech
+                        ? 'Keep practicing to improve your accuracy and narration.'
+                        : 'Keep practicing to improve your step accuracy and sequence.',
+            },
             {
                 id: 'completed',
                 title: `Completed ${assessmentResults?.completedCount ?? 0} of ${assessmentResults?.totalSteps ?? 0} steps`,
@@ -103,7 +112,7 @@ export function TrainingReviewPanel3D(props) {
             },
             ...(assessmentResults?.missedSteps.length > 0 ? [{ id: 'missed', title: 'Steps Missed', detail: assessmentResults.missedSteps.join(', ') }] : []),
             ...(assessmentResults?.outOfOrderSteps.length > 0 ? [{ id: 'order', title: 'Performed Out of Order', detail: assessmentResults.outOfOrderSteps.join(', ') }] : []),
-            ...(assessmentResults?.speechMisses.length > 0 ? [{ id: 'speech', title: 'Narration Needed', detail: assessmentResults.speechMisses.join(', ') }] : []),
+            ...(assessmentRequireSpeech && assessmentResults?.speechMisses.length > 0 ? [{ id: 'speech', title: 'Narration Needed', detail: assessmentResults.speechMisses.join(', ') }] : []),
         ]
         : stepResults
             .filter((result) => result.failures > 0)

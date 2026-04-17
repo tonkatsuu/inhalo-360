@@ -28,6 +28,7 @@ function resetStore() {
 
 test('assessment mode holds progression until narration is confirmed', () => {
     resetStore()
+    useTrainingStore.getState().setAssessmentRequireSpeech(true)
     useTrainingStore.getState().startTraining('assessment')
 
     for (let index = 0; index < 8; index += 1) {
@@ -52,6 +53,7 @@ test('assessment mode holds progression until narration is confirmed', () => {
 
 test('ending assessment early records physical completion without narration', () => {
     resetStore()
+    useTrainingStore.getState().setAssessmentRequireSpeech(true)
     useTrainingStore.getState().startTraining('assessment')
 
     for (let index = 0; index < 8; index += 1) {
@@ -67,6 +69,23 @@ test('ending assessment early records physical completion without narration', ()
     assert.equal(results.completedCount, 1)
     assert.equal(results.speechMisses.includes('Shake inhaler'), true)
     assert.equal(results.stepBreakdown.find((step) => step.stepId === 'shake_initial')?.status, 'completed_without_narration')
+
+    resetStore()
+})
+
+test('assessment mode defaults to action-only progression', () => {
+    resetStore()
+    useTrainingStore.getState().setAssessmentRequireSpeech(false)
+    useTrainingStore.getState().startTraining('assessment')
+
+    for (let index = 0; index < 8; index += 1) {
+        useTrainingStore.getState().syncTrainingInput(buildFrame({ shakeSpeed: 1.2 }))
+    }
+
+    const state = useTrainingStore.getState()
+    assert.equal(state.currentStepId, 'remove_cap')
+    assert.equal(state.completedSteps.includes('shake_initial'), true)
+    assert.equal(state.assessmentChecklist.find((item) => item.stepId === 'shake_initial')?.speechConfirmed, true)
 
     resetStore()
 })

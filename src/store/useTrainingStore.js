@@ -95,8 +95,10 @@ function getInitialState() {
             isXR: false,
         },
         assessmentChecklist: [],
+        assessmentRequireSpeech: false,
         assessmentTranscript: '',
         assessmentListening: false,
+        assessmentSpeechLevel: 0,
         assessmentSpeechStatus: 'idle',
         assessmentSpeechSupported: true,
         assessmentSpeechError: null,
@@ -258,6 +260,7 @@ export const useTrainingStore = create((set, get) => {
         const currentStep = getStepById(state.currentStepId)
         if (!currentStep) return
         const isAssessment = state.trainingMode === 'assessment'
+        const requireSpeech = state.assessmentRequireSpeech === true
 
         const nextPatch = {
             currentStepRuntime: outcome.runtime,
@@ -269,6 +272,17 @@ export const useTrainingStore = create((set, get) => {
 
         if (outcome.status === 'success') {
             if (isAssessment) {
+                if (!requireSpeech) {
+                    upsertAssessmentChecklistItem(currentStep.id, true, true)
+                    set({
+                        ...nextPatch,
+                        sessionPhase: getInteractivePhaseFromOutcome(outcome.status),
+                        assessmentPendingCompletion: null,
+                    })
+                    completeCurrentStep(outcome.branchChoice)
+                    return
+                }
+
                 const speechConfirmed = state.assessmentSpeechByStep[currentStep.id]?.confirmed === true
 
                 if (speechConfirmed) {
@@ -339,6 +353,7 @@ export const useTrainingStore = create((set, get) => {
             set((state) => ({
                 ...getInitialState(),
                 trainingMode: mode,
+                assessmentRequireSpeech: state.assessmentRequireSpeech,
                 hasTrainingStarted: true,
                 sessionPhase: mode === 'assessment' ? 'awaitingAction' : 'starting',
                 startedAt: Date.now(),
@@ -565,18 +580,21 @@ export const useTrainingStore = create((set, get) => {
         resetTrainingSession: () =>
             set((state) => ({
                 ...getInitialState(),
+                assessmentRequireSpeech: state.assessmentRequireSpeech,
                 focusDistanceOffset: state.focusDistanceOffset,
             })),
 
         finishAssessment: () => {
-            const { trainingMode, sessionPhase, assessmentPendingCompletion, assessmentSpeechByStep } = get()
+            const { trainingMode, sessionPhase, assessmentPendingCompletion, assessmentSpeechByStep, assessmentRequireSpeech } = get()
             if (trainingMode !== 'assessment' || sessionPhase === 'completed') return
 
             if (assessmentPendingCompletion?.stepId) {
                 upsertAssessmentChecklistItem(
                     assessmentPendingCompletion.stepId,
                     true,
-                    assessmentSpeechByStep[assessmentPendingCompletion.stepId]?.confirmed === true,
+                    assessmentRequireSpeech
+                        ? assessmentSpeechByStep[assessmentPendingCompletion.stepId]?.confirmed === true
+                        : true,
                 )
             }
 
@@ -584,9 +602,11 @@ export const useTrainingStore = create((set, get) => {
         },
 
         recordAssessmentStep: upsertAssessmentChecklistItem,
+        setAssessmentRequireSpeech: (value) => set({ assessmentRequireSpeech: value }),
 
         setAssessmentTranscript: (transcript) => set({ assessmentTranscript: transcript }),
         setAssessmentListening: (value) => set({ assessmentListening: value }),
+        setAssessmentSpeechLevel: (value) => set({ assessmentSpeechLevel: value }),
         setAssessmentSpeechStatus: (value) => set({ assessmentSpeechStatus: value }),
         setAssessmentSpeechSupported: (value) => set({ assessmentSpeechSupported: value }),
         setAssessmentSpeechError: (value) => set({ assessmentSpeechError: value }),

@@ -39,6 +39,8 @@ export function AssessmentSpeechPanel3D({ position = DEFAULT_POSITION }) {
 
     const {
         assessmentListening,
+        assessmentRequireSpeech,
+        assessmentSpeechLevel,
         assessmentSpeechStatus,
         assessmentSpeechError,
         assessmentSpeechSupported,
@@ -51,6 +53,7 @@ export function AssessmentSpeechPanel3D({ position = DEFAULT_POSITION }) {
 
     const isVisible =
         trainingMode === 'assessment' &&
+        assessmentRequireSpeech &&
         sessionPhase !== 'idle' &&
         !(sessionPhase === 'completed' && hasReviewOpen)
 
@@ -79,6 +82,7 @@ export function AssessmentSpeechPanel3D({ position = DEFAULT_POSITION }) {
         : assessmentSpeechError === 'audio-capture'
                 ? 'Assessment narration is hot mic, but no microphone input is reaching the browser.'
                 : 'Assessment narration is hot mic. There is no hold-to-talk button in this mode.'
+    const signalPercent = Math.round(Math.max(0, Math.min(1, assessmentSpeechLevel)) * 100)
 
     useFrame((_state, delta) => {
         if (!root.current || !isVisible) {
@@ -159,7 +163,7 @@ export function AssessmentSpeechPanel3D({ position = DEFAULT_POSITION }) {
                 anchorY="top"
                 color="#9fd4e7"
             >
-                {`Mic mode: ${speechStatus}\n${guidanceText}`}
+                {`Mic mode: ${speechStatus}\nSignal: ${signalPercent}%\n${guidanceText}`}
             </Text>
 
             <Text
